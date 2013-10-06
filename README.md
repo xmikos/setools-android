@@ -1,6 +1,4 @@
-# setools-android
-
-## DESCRIPTION
+## Description
 
 This is port of [setools][1] to Android.
 
@@ -14,12 +12,12 @@ These tools allow to analyze SELinux/SEAndroid policy on an Android device.
 [1]: http://oss.tresys.com/projects/setools
 
 
-## BUILDING
+## Building
 
 Ensure that you have installed android-ndk properly. Run build.sh script.
 
 
-## THIRD-PARTY CODE
+## Third-party code
 
 This repository contains other opensource code:
 
