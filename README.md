@@ -1,6 +1,6 @@
 ## Description
 
-This is port of [setools][1] to Android.
+This is unofficial port of [setools][1] to Android.
 
 Now ported:
 
