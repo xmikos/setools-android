@@ -38,7 +38,7 @@ int add_rule(char *s, char *t, char *c, char *p, policydb_t *policy) {
 	perm_datum_t *perm;
 	avtab_datum_t *av;
 	avtab_key_t key;
-	
+
 	src = hashtab_search(policy->p_types.table, s);
 	if (src == NULL) {
 		fprintf(stderr, "source type %s does not exist\n", s);
@@ -88,7 +88,6 @@ int add_rule(char *s, char *t, char *c, char *p, policydb_t *policy) {
 
 	return 0;
 }
-	
 
 int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
 	int fd;
@@ -99,19 +98,19 @@ int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
 	fd = open(filename, O_RDONLY);
 	if (fd < 0) {
 		fprintf(stderr, "Can't open '%s':  %s\n",
-				filename, strerror(errno));
+		        filename, strerror(errno));
 		return 1;
 	}
 	if (fstat(fd, &sb) < 0) {
 		fprintf(stderr, "Can't stat '%s':  %s\n",
-				filename, strerror(errno));
+		        filename, strerror(errno));
 		return 1;
 	}
 	map = mmap(NULL, sb.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE,
 				fd, 0);
 	if (map == MAP_FAILED) {
 		fprintf(stderr, "Can't mmap '%s':  %s\n",
-				filename, strerror(errno));
+		        filename, strerror(errno));
 		return 1;
 	}
 
@@ -131,46 +130,43 @@ int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
 
 	return 0;
 }
-	
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 	char *policy = NULL, *source = NULL, *target = NULL, *class = NULL, *perm = NULL, *outfile = NULL, *permissive = NULL;
 	policydb_t policydb;
 	struct policy_file pf, outpf;
 	sidtab_t sidtab;
 	int ch;
 	FILE *fp;
-	
-	
-        struct option long_options[] = {
-                {"source", required_argument, NULL, 's'},
-                {"target", required_argument, NULL, 't'},
-                {"class", required_argument, NULL, 'c'},
-                {"perm", required_argument, NULL, 'p'},
-                {"policy", required_argument, NULL, 'P'},
-                {"output", required_argument, NULL, 'o'},
-                {"permissive", required_argument, NULL, 'Z'},
-                {NULL, 0, NULL, 0}
-        };
 
-        while ((ch = getopt_long(argc, argv, "s:t:c:p:P:o:Z:", long_options, NULL)) != -1) {
-                switch (ch) {
-                case 's':
-                        source = optarg;
-                        break;
-                case 't':
-                        target = optarg;
-                        break;
-                case 'c':
-                        class = optarg;
-                        break;
-                case 'p':
-                        perm = optarg;
-                        break;
-                case 'P':
-                        policy = optarg;
-                        break;
+	struct option long_options[] = {
+		{"source", required_argument, NULL, 's'},
+		{"target", required_argument, NULL, 't'},
+		{"class", required_argument, NULL, 'c'},
+		{"perm", required_argument, NULL, 'p'},
+		{"policy", required_argument, NULL, 'P'},
+		{"output", required_argument, NULL, 'o'},
+		{"permissive", required_argument, NULL, 'Z'},
+		{NULL, 0, NULL, 0}
+	};
+
+	while ((ch = getopt_long(argc, argv, "s:t:c:p:P:o:Z:", long_options, NULL)) != -1) {
+		switch (ch) {
+		case 's':
+			source = optarg;
+			break;
+		case 't':
+			target = optarg;
+			break;
+		case 'c':
+			class = optarg;
+			break;
+		case 'p':
+			perm = optarg;
+			break;
+		case 'P':
+			policy = optarg;
+			break;
 		case 'o':
 			outfile = optarg;
 			break;
@@ -186,23 +182,23 @@ int main(int argc, char **argv)
 		usage(argv[0]);
 
 	sepol_set_policydb(&policydb);
-        sepol_set_sidtab(&sidtab);
+	sepol_set_sidtab(&sidtab);
 
 	if (load_policy(policy, &policydb, &pf)) {
 		fprintf(stderr, "Could not load policy\n");
 		return 1;
 	}
 
-        if (policydb_load_isids(&policydb, &sidtab))
+	if (policydb_load_isids(&policydb, &sidtab))
 		return 1;
 
 	if (permissive) {
 		type_datum_t *type;
-        	type = hashtab_search(policydb.p_types.table, permissive);
-        	if (type == NULL) {
-                	fprintf(stderr, "type %s does not exist\n", permissive);
-                	return 1;
-        	}
+		type = hashtab_search(policydb.p_types.table, permissive);
+		if (type == NULL) {
+			fprintf(stderr, "type %s does not exist\n", permissive);
+			return 1;
+		}
 		if (ebitmap_set_bit(&policydb.permissive_map, type->s.value, 1)) {
 			fprintf(stderr, "Could not set bit in permissive map\n");
 			return 1;
@@ -219,19 +215,18 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Could not open outfile\n");
 		return 1;
 	}
-	
+
 	policy_file_init(&outpf);
 	outpf.type = PF_USE_STDIO;
 	outpf.fp = fp;
-	
 
 	if (policydb_write(&policydb, &outpf)) {
 		fprintf(stderr, "Could not write policy\n");
 		return 1;
 	}
-	
+
 	policydb_destroy(&policydb);
 	fclose(fp);
-	
+
 	return 0;
 }
