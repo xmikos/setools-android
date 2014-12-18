@@ -28,6 +28,16 @@ Ensure that you have installed _android-ndk_ properly. Then run:
     ndk-build
 
 
+## Usage
+
+    sepolicy-inject -s <source type> -t <target type> -c <class> -p <perm> [-P <policy file>] [-o <output file>] [-l|--load]
+    sepolicy-inject -Z permissive_type [-P <policy file>] [-o <output file>] [-l|--load]
+
+For example if you want to allow _vdc_ to write to pseudo-terminal (so you can see replies from _vdc_ command):
+
+    sepolicy-inject -s vdc -t devpts -c chr_file -p write -l
+
+
 ## Third-party code
 
 This repository contains other opensource code:
