@@ -7,10 +7,6 @@
 
 #include <sepol/policydb/policydb.h>
 
-#ifndef DARWIN
-#include <stdio_ext.h>
-#endif
-
 #include <stdarg.h>
 
 #include "debug.h"
@@ -47,17 +43,12 @@ static int load_users(struct policydb *policydb, const char *path)
 	if (fp == NULL)
 		return -1;
 
-#ifdef DARWIN
 	if ((buffer = (char *)malloc(255 * sizeof(char))) == NULL) {
 	  ERR(NULL, "out of memory");
 	  return -1;
 	}
 
 	while(fgets(buffer, 255, fp) != NULL) {
-#else
-	__fsetlocking(fp, FSETLOCKING_BYCALLER);
-	while ((nread = getline(&buffer, &len, fp)) > 0) {
-#endif
 
 		lineno++;
 		if (buffer[nread - 1] == '\n')
