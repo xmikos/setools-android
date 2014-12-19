@@ -223,6 +223,13 @@ static int class_copy_default_new_object(link_state_t *state,
 		}
 		newdatum->default_role = olddatum->default_role;
 	}
+	if (olddatum->default_type) {
+		if (newdatum->default_type && olddatum->default_type != newdatum->default_type) {
+			ERR(state->handle, "Found conflicting default type definitions");
+			return SEPOL_ENOTSUP;
+		}
+		newdatum->default_type = olddatum->default_type;
+	}
 	if (olddatum->default_range) {
 		if (newdatum->default_range && olddatum->default_range != newdatum->default_range) {
 			ERR(state->handle, "Found conflicting default range definitions");
@@ -291,8 +298,8 @@ static int class_copy_callback(hashtab_key_t key, hashtab_datum_t datum,
 			}
 			new_id = strdup(id);
 			if (new_id == NULL) {
-				symtab_destroy(&new_class->permissions);
 				ERR(state->handle, "Memory error\n");
+				symtab_destroy(&new_class->permissions);
 				ret = SEPOL_ERR;
 				goto err;
 			}
@@ -300,9 +307,9 @@ static int class_copy_callback(hashtab_key_t key, hashtab_datum_t datum,
 					     (hashtab_key_t) new_id,
 					     (hashtab_datum_t) new_class);
 			if (ret) {
-				symtab_destroy(&new_class->permissions);
 				ERR(state->handle,
 				    "could not insert new class into symtab");
+				symtab_destroy(&new_class->permissions);
 				goto err;
 			}
 			new_class->s.value = ++(state->base->p_classes.nprim);
@@ -678,12 +685,16 @@ static int sens_copy_callback(hashtab_key_t key, hashtab_datum_t datum,
 			    "%s: Modules may not declare new sensitivities.",
 			    state->cur_mod_name);
 			return SEPOL_ENOTSUP;
-		}
-		if (scope->scope == SCOPE_REQ) {
+		} else if (scope->scope == SCOPE_REQ) {
 			/* unmet requirement */
 			ERR(state->handle,
 			    "%s: Sensitivity %s not declared by base.",
 			    state->cur_mod_name, id);
+			return SEPOL_ENOTSUP;
+		} else {
+			ERR(state->handle,
+			    "%s: has an unknown scope: %d\n",
+			    state->cur_mod_name, scope->scope);
 			return SEPOL_ENOTSUP;
 		}
 	}
@@ -706,8 +717,7 @@ static int cat_copy_callback(hashtab_key_t key, hashtab_datum_t datum,
 
 	base_cat = hashtab_search(state->base->p_cats.table, id);
 	if (!base_cat) {
-		scope =
-		    hashtab_search(state->cur->policy->p_cat_scope.table, id);
+		scope = hashtab_search(state->cur->policy->p_cat_scope.table, id);
 		if (!scope)
 			return SEPOL_ERR;
 		if (scope->scope == SCOPE_DECL) {
@@ -716,12 +726,17 @@ static int cat_copy_callback(hashtab_key_t key, hashtab_datum_t datum,
 			    "%s: Modules may not declare new categories.",
 			    state->cur_mod_name);
 			return SEPOL_ENOTSUP;
-		}
-		if (scope->scope == SCOPE_REQ) {
+		} else if (scope->scope == SCOPE_REQ) {
 			/* unmet requirement */
 			ERR(state->handle,
 			    "%s: Category %s not declared by base.",
 			    state->cur_mod_name, id);
+			return SEPOL_ENOTSUP;
+		} else {
+			/* unknown scope?  malformed policy? */
+			ERR(state->handle,
+			    "%s: has an unknown scope: %d\n",
+			    state->cur_mod_name, scope->scope);
 			return SEPOL_ENOTSUP;
 		}
 	}
@@ -1302,13 +1317,20 @@ static int copy_avrule_list(avrule_t * list, avrule_t ** dst,
 
 			if (new_rule->perms == NULL) {
 				new_rule->perms = new_perm;
-			} else if (tail_perm) {
+			} else {
+				assert(tail_perm);
 				tail_perm->next = new_perm;
 			}
 			tail_perm = new_perm;
 			cur_perm = cur_perm->next;
 		}
 		new_rule->line = cur->line;
+		new_rule->source_line = cur->source_line;
+		if (cur->source_filename) {
+			new_rule->source_filename = strdup(cur->source_filename);
+			if (!new_rule->source_filename)
+				goto cleanup;
+		}
 
 		cur = cur->next;
 
@@ -2005,6 +2027,7 @@ static int is_decl_requires_met(link_state_t * state,
 			struct find_perm_arg fparg;
 			class_datum_t *cladatum;
 			uint32_t perm_value = j + 1;
+			int rc;
 			scope_datum_t *scope;
 
 			if (!ebitmap_node_get_bit(node, j)) {
@@ -2026,11 +2049,13 @@ static int is_decl_requires_met(link_state_t * state,
 			fparg.valuep = perm_value;
 			fparg.key = NULL;
 
-			hashtab_map(cladatum->permissions.table, find_perm,
+			(void)hashtab_map(cladatum->permissions.table, find_perm,
 				    &fparg);
-			if (fparg.key == NULL && cladatum->comdatum != NULL)
-				hashtab_map(cladatum->comdatum->permissions.
-					    table, find_perm, &fparg);
+			if (fparg.key == NULL && cladatum->comdatum != NULL) {
+				rc = hashtab_map(cladatum->comdatum->permissions.table,
+						 find_perm, &fparg);
+				assert(rc == 1);
+			}
 			perm_id = fparg.key;
 
 			assert(perm_id != NULL);
@@ -2054,6 +2079,7 @@ static int debug_requirements(link_state_t * state, policydb_t * p)
 	int ret;
 	avrule_block_t *cur;
 	missing_requirement_t req;
+	memset(&req, 0, sizeof(req));
 
 	for (cur = p->global; cur != NULL; cur = cur->next) {
 		if (cur->enabled != NULL)
@@ -2066,34 +2092,27 @@ static int debug_requirements(link_state_t * state, policydb_t * p)
 			char *mod_name = cur->branch_list->module_name ?
 			    cur->branch_list->module_name : "BASE";
 			if (req.symbol_type == SYM_CLASSES) {
-
 				struct find_perm_arg fparg;
 
 				class_datum_t *cladatum;
-				cladatum =
-				    p->class_val_to_struct[req.symbol_value -
-							   1];
+				cladatum = p->class_val_to_struct[req.symbol_value - 1];
 
 				fparg.valuep = req.perm_value;
 				fparg.key = NULL;
-				hashtab_map(cladatum->permissions.table,
-					    find_perm, &fparg);
+				(void)hashtab_map(cladatum->permissions.table,
+						  find_perm, &fparg);
 
 				if (cur->flags & AVRULE_OPTIONAL) {
 					ERR(state->handle,
 					    "%s[%d]'s optional requirements were not met: class %s, permission %s",
 					    mod_name, cur->branch_list->decl_id,
-					    p->p_class_val_to_name[req.
-								   symbol_value
-								   - 1],
+					    p->p_class_val_to_name[req.symbol_value - 1],
 					    fparg.key);
 				} else {
 					ERR(state->handle,
 					    "%s[%d]'s global requirements were not met: class %s, permission %s",
 					    mod_name, cur->branch_list->decl_id,
-					    p->p_class_val_to_name[req.
-								   symbol_value
-								   - 1],
+					    p->p_class_val_to_name[req.symbol_value - 1],
 					    fparg.key);
 				}
 			} else {
@@ -2141,7 +2160,7 @@ static void print_missing_requirements(link_state_t * state,
 
 		fparg.valuep = req->perm_value;
 		fparg.key = NULL;
-		hashtab_map(cladatum->permissions.table, find_perm, &fparg);
+		(void)hashtab_map(cladatum->permissions.table, find_perm, &fparg);
 
 		ERR(state->handle,
 		    "%s's global requirements were not met: class %s, permission %s",
@@ -2152,8 +2171,7 @@ static void print_missing_requirements(link_state_t * state,
 		    "%s's global requirements were not met: %s %s",
 		    mod_name,
 		    symtab_names[req->symbol_type],
-		    p->sym_val_to_name[req->symbol_type][req->symbol_value -
-							 1]);
+		    p->sym_val_to_name[req->symbol_type][req->symbol_value - 1]);
 	}
 }
 

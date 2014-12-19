@@ -49,6 +49,82 @@ typedef struct expand_state {
 	int expand_neverallow;
 } expand_state_t;
 
+struct linear_probe {
+	filename_trans_t **table;	/* filename_trans chunks with same stype */
+	filename_trans_t **ends;	/* pointers to ends of **table chunks */
+	uint32_t length;		/* length of the table */
+};
+
+static int linear_probe_create(struct linear_probe *probe, uint32_t length)
+{
+	probe->table = calloc(length, sizeof(*probe->table));
+	if (probe->table == NULL)
+		return -1;
+
+	probe->ends = calloc(length, sizeof(*probe->ends));
+	if (probe->ends == NULL)
+		return -1;
+
+	probe->length = length;
+
+	return 0;
+}
+
+static void linear_probe_destroy(struct linear_probe *probe)
+{
+	if (probe->length == 0)
+		return;
+
+	free(probe->table);
+	free(probe->ends);
+	memset(probe, 0, sizeof(*probe));
+}
+
+static void linear_probe_insert(struct linear_probe *probe, uint32_t key,
+				filename_trans_t *data)
+{
+	assert(probe->length > key);
+
+	if (probe->table[key] != NULL) {
+		data->next = probe->table[key];
+		probe->table[key] = data;
+	} else {
+		probe->table[key] = probe->ends[key] = data;
+	}
+}
+
+static filename_trans_t *linear_probe_find(struct linear_probe *probe, uint32_t key)
+{
+	assert(probe->length > key);
+
+	return probe->table[key];
+}
+
+/* Returns all chunks stored in the *probe as single-linked list */
+static filename_trans_t *linear_probe_dump(struct linear_probe *probe,
+					   filename_trans_t **endp)
+{
+	uint32_t i;
+	filename_trans_t *result = NULL;
+	filename_trans_t *end = NULL;
+
+	for (i = 0; i < probe->length; i++) {
+		if (probe->table[i] != NULL) {
+			if (end == NULL)
+				end = probe->ends[i];
+			probe->ends[i]->next = result;
+			result = probe->table[i];
+			probe->table[i] = probe->ends[i] = NULL;
+		}
+	}
+
+	/* Incoherent result and end pointers indicates bug */
+	assert((result != NULL && end != NULL) || (result == NULL && end == NULL));
+
+	*endp = end;
+	return result;
+}
+
 static void expand_state_init(expand_state_t * state)
 {
 	memset(state, 0, sizeof(expand_state_t));
@@ -251,6 +327,7 @@ static int common_copy_callback(hashtab_key_t key, hashtab_datum_t datum,
 	new_id = strdup(id);
 	if (!new_id) {
 		ERR(state->handle, "Out of memory!");
+		/* free memory created by symtab_init first, then free new_common */
 		symtab_destroy(&new_common->permissions);
 		free(new_common);
 		return -1;
@@ -264,7 +341,6 @@ static int common_copy_callback(hashtab_key_t key, hashtab_datum_t datum,
 			   (hashtab_datum_t *) new_common);
 	if (ret) {
 		ERR(state->handle, "hashtab overflow");
-		symtab_destroy(&new_common->permissions);
 		free(new_common);
 		free(new_id);
 		return -1;
@@ -308,6 +384,17 @@ static int constraint_node_clone(constraint_node_t ** dst,
 			new_expr->op = expr->op;
 			if (new_expr->expr_type == CEXPR_NAMES) {
 				if (new_expr->attr & CEXPR_TYPE) {
+					/*
+					 * Copy over constraint policy source types and/or
+					 * attributes for sepol_compute_av_reason_buffer(3)
+					 * so that utilities can analyse constraint errors.
+					 */
+					if (map_ebitmap(&expr->type_names->types,
+							&new_expr->type_names->types,
+							state->typemap)) {
+						ERR(NULL, "Failed to map type_names->types");
+						goto out_of_mem;
+					}
 					/* Type sets require expansion and conversion. */
 					if (expand_convert_type_set(state->out,
 								    state->
@@ -378,6 +465,13 @@ static int class_copy_default_new_object(expand_state_t *state,
 			return SEPOL_ENOTSUP;
 		}
 		newdatum->default_role = olddatum->default_role;
+	}
+	if (olddatum->default_type) {
+		if (newdatum->default_type && olddatum->default_type != newdatum->default_type) {
+			ERR(state->handle, "Found conflicting default type definitions");
+			return SEPOL_ENOTSUP;
+		}
+		newdatum->default_type = olddatum->default_type;
 	}
 	if (olddatum->default_range) {
 		if (newdatum->default_range && olddatum->default_range != newdatum->default_range) {
@@ -880,9 +974,13 @@ int mls_semantic_level_expand(mls_semantic_level_t * sl, mls_level_t * l,
 
 	l->sens = sl->sens;
 	levdatum = (level_datum_t *) hashtab_search(p->p_levels.table,
-						    p->p_sens_val_to_name[l->
-									  sens -
-									  1]);
+						    p->p_sens_val_to_name[l->sens - 1]);
+	if (!levdatum) {
+		ERR(h, "%s: Impossible situation found, nothing in p_levels.table.\n",
+		    __func__);
+		errno = ENOENT;
+		return -1;
+	}
 	for (cat = sl->cat; cat; cat = cat->next) {
 		if (cat->low > cat->high) {
 			ERR(h, "Category range is not valid %s.%s",
@@ -1361,10 +1459,20 @@ static int copy_role_trans(expand_state_t * state, role_trans_rule_t * rules)
 static int expand_filename_trans(expand_state_t *state, filename_trans_rule_t *rules)
 {
 	unsigned int i, j;
-	filename_trans_t *new_trans, *cur_trans;
+	filename_trans_t *new_trans, *cur_trans, *end;
 	filename_trans_rule_t *cur_rule;
 	ebitmap_t stypes, ttypes;
 	ebitmap_node_t *snode, *tnode;
+	struct linear_probe probe;
+
+	/*
+	 * Linear probing speeds-up finding filename_trans rules with certain
+	 * "stype" value.
+	 */
+	if (linear_probe_create(&probe, 4096)) { /* Assume 4096 is enough for most cases */
+		ERR(state->handle, "Out of memory!");
+		return -1;
+	}
 
 	cur_rule = rules;
 	while (cur_rule) {
@@ -1387,6 +1495,14 @@ static int expand_filename_trans(expand_state_t *state, filename_trans_rule_t *r
 
 		mapped_otype = state->typemap[cur_rule->otype - 1];
 
+		if (ebitmap_length(&stypes) > probe.length) {
+			linear_probe_destroy(&probe);
+			if (linear_probe_create(&probe, ebitmap_length(&stypes))) {
+				ERR(state->handle, "Out of memory!");
+				return -1;
+			}
+		}
+
 		ebitmap_for_each_bit(&stypes, snode, i) {
 			if (!ebitmap_node_get_bit(snode, i))
 				continue;
@@ -1394,16 +1510,14 @@ static int expand_filename_trans(expand_state_t *state, filename_trans_rule_t *r
 				if (!ebitmap_node_get_bit(tnode, j))
 					continue;
 
-				cur_trans = state->out->filename_trans;
-				while (cur_trans) {
-					if ((cur_trans->stype == i + 1) &&
-					    (cur_trans->ttype == j + 1) &&
+				cur_trans = linear_probe_find(&probe, i);
+				while (cur_trans != NULL) {
+					if ((cur_trans->ttype == j + 1) &&
 					    (cur_trans->tclass == cur_rule->tclass) &&
 					    (!strcmp(cur_trans->name, cur_rule->name))) {
 						/* duplicate rule, who cares */
 						if (cur_trans->otype == mapped_otype)
 							break;
-
 						ERR(state->handle, "Conflicting filename trans rules %s %s %s : %s otype1:%s otype2:%s",
 						    cur_trans->name,
 						    state->out->p_type_val_to_name[i],
@@ -1411,7 +1525,7 @@ static int expand_filename_trans(expand_state_t *state, filename_trans_rule_t *r
 						    state->out->p_class_val_to_name[cur_trans->tclass - 1],
 						    state->out->p_type_val_to_name[cur_trans->otype - 1],
 						    state->out->p_type_val_to_name[mapped_otype - 1]);
-						    
+
 						return -1;
 					}
 					cur_trans = cur_trans->next;
@@ -1426,8 +1540,6 @@ static int expand_filename_trans(expand_state_t *state, filename_trans_rule_t *r
 					return -1;
 				}
 				memset(new_trans, 0, sizeof(*new_trans));
-				new_trans->next = state->out->filename_trans;
-				state->out->filename_trans = new_trans;
 
 				new_trans->name = strdup(cur_rule->name);
 				if (!new_trans->name) {
@@ -1438,7 +1550,14 @@ static int expand_filename_trans(expand_state_t *state, filename_trans_rule_t *r
 				new_trans->ttype = j + 1;
 				new_trans->tclass = cur_rule->tclass;
 				new_trans->otype = mapped_otype;
+				linear_probe_insert(&probe, i, new_trans);
 			}
+		}
+
+		cur_trans = linear_probe_dump(&probe, &end);
+		if (cur_trans != NULL) {
+			end->next = state->out->filename_trans;
+			state->out->filename_trans = cur_trans;
 		}
 
 		ebitmap_destroy(&stypes);
@@ -1985,8 +2104,9 @@ static int cond_node_copy(expand_state_t * state, cond_node_t * cn)
 	}
 
 	if (cond_node_map_bools(state, tmp)) {
-		ERR(state->handle, "Error mapping booleans");
+		cond_node_destroy(tmp);
 		free(tmp);
+		ERR(state->handle, "Error mapping booleans");
 		return -1;
 	}
 
@@ -2193,18 +2313,21 @@ static int genfs_copy(expand_state_t * state)
 		memset(newgenfs, 0, sizeof(genfs_t));
 		newgenfs->fstype = strdup(genfs->fstype);
 		if (!newgenfs->fstype) {
-			ERR(state->handle, "Out of memory!");
 			free(newgenfs);
+			ERR(state->handle, "Out of memory!");
 			return -1;
 		}
+		if (!end)
+			state->out->genfs = newgenfs;
+		else
+			end->next = newgenfs;
+		end = newgenfs;
 
 		l = NULL;
 		for (c = genfs->head; c; c = c->next) {
 			newc = malloc(sizeof(ocontext_t));
 			if (!newc) {
 				ERR(state->handle, "Out of memory!");
-				free(newgenfs->fstype);
-				free(newgenfs);
 				return -1;
 			}
 			memset(newc, 0, sizeof(ocontext_t));
@@ -2212,8 +2335,6 @@ static int genfs_copy(expand_state_t * state)
 			if (!newc->u.name) {
 				ERR(state->handle, "Out of memory!");
 				free(newc);
-				free(newgenfs->fstype);
-				free(newgenfs);
 				return -1;
 			}
 			newc->v.sclass = c->v.sclass;
@@ -2224,12 +2345,6 @@ static int genfs_copy(expand_state_t * state)
 				newgenfs->head = newc;
 			l = newc;
 		}
-		if (!end) {
-			state->out->genfs = newgenfs;
-		} else {
-			end->next = newgenfs;
-		}
-		end = newgenfs;
 	}
 	return 0;
 }
@@ -2535,6 +2650,12 @@ static int copy_neverallow(policydb_t * dest_pol, uint32_t * typemap,
 	avrule->specified = AVRULE_NEVERALLOW;
 	avrule->line = source_rule->line;
 	avrule->flags = source_rule->flags;
+	avrule->source_line = source_rule->source_line;
+	if (source_rule->source_filename) {
+		avrule->source_filename = strdup(source_rule->source_filename);
+		if (!avrule->source_filename)
+			goto err;
+	}
 
 	if (ebitmap_cpy(&avrule->stypes.types, &stypes))
 		goto err;
@@ -3020,7 +3141,8 @@ int expand_module(sepol_handle_t * handle,
 	}
 
 	cond_optimize_lists(state.out->cond_list);
-	evaluate_conds(state.out);
+	if (evaluate_conds(state.out))
+		goto cleanup;
 
 	/* copy ocontexts */
 	if (ocontext_copy(&state, out->target_platform))

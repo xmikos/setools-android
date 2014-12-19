@@ -158,6 +158,20 @@ static struct policydb_compat_info policydb_compat[] = {
 	 .target_platform = SEPOL_TARGET_SELINUX,
 	},
 	{
+	 .type = POLICY_KERN,
+	 .version = POLICYDB_VERSION_DEFAULT_TYPE,
+	 .sym_num = SYM_NUM,
+	 .ocon_num = OCON_NODE6 + 1,
+	 .target_platform = SEPOL_TARGET_SELINUX,
+	},
+	{
+	 .type = POLICY_KERN,
+	 .version = POLICYDB_VERSION_CONSTRAINT_NAMES,
+	 .sym_num = SYM_NUM,
+	 .ocon_num = OCON_NODE6 + 1,
+	 .target_platform = SEPOL_TARGET_SELINUX,
+	},
+	{
 	 .type = POLICY_BASE,
 	 .version = MOD_POLICYDB_VERSION_BASE,
 	 .sym_num = SYM_NUM,
@@ -242,6 +256,20 @@ static struct policydb_compat_info policydb_compat[] = {
 	 .target_platform = SEPOL_TARGET_SELINUX,
 	},
 	{
+	 .type = POLICY_BASE,
+	 .version = MOD_POLICYDB_VERSION_DEFAULT_TYPE,
+	 .sym_num = SYM_NUM,
+	 .ocon_num = OCON_NODE6 + 1,
+	 .target_platform = SEPOL_TARGET_SELINUX,
+	},
+	{
+	 .type = POLICY_BASE,
+	 .version = MOD_POLICYDB_VERSION_CONSTRAINT_NAMES,
+	 .sym_num = SYM_NUM,
+	 .ocon_num = OCON_NODE6 + 1,
+	 .target_platform = SEPOL_TARGET_SELINUX,
+	},
+	{
 	 .type = POLICY_MOD,
 	 .version = MOD_POLICYDB_VERSION_BASE,
 	 .sym_num = SYM_NUM,
@@ -321,6 +349,20 @@ static struct policydb_compat_info policydb_compat[] = {
 	{
 	 .type = POLICY_MOD,
 	 .version = MOD_POLICYDB_VERSION_NEW_OBJECT_DEFAULTS,
+	 .sym_num = SYM_NUM,
+	 .ocon_num = 0,
+	 .target_platform = SEPOL_TARGET_SELINUX,
+	},
+	{
+	 .type = POLICY_MOD,
+	 .version = MOD_POLICYDB_VERSION_DEFAULT_TYPE,
+	 .sym_num = SYM_NUM,
+	 .ocon_num = 0,
+	 .target_platform = SEPOL_TARGET_SELINUX,
+	},
+	{
+	 .type = POLICY_MOD,
+	 .version = MOD_POLICYDB_VERSION_CONSTRAINT_NAMES,
 	 .sym_num = SYM_NUM,
 	 .ocon_num = 0,
 	 .target_platform = SEPOL_TARGET_SELINUX,
@@ -492,6 +534,8 @@ void avrule_destroy(avrule_t * x)
 	}
 	type_set_destroy(&x->stypes);
 	type_set_destroy(&x->ttypes);
+
+	free(x->source_filename);
 
 	next = x->perms;
 	while (next) {
@@ -1074,7 +1118,7 @@ static int common_destroy(hashtab_key_t key, hashtab_datum_t datum, void *p
 	if (key)
 		free(key);
 	comdatum = (common_datum_t *) datum;
-	hashtab_map(comdatum->permissions.table, perm_destroy, 0);
+	(void)hashtab_map(comdatum->permissions.table, perm_destroy, 0);
 	hashtab_destroy(comdatum->permissions.table);
 	free(datum);
 	return 0;
@@ -1093,7 +1137,7 @@ static int class_destroy(hashtab_key_t key, hashtab_datum_t datum, void *p
 	if (cladatum == NULL) {
 		return 0;
 	}
-	hashtab_map(cladatum->permissions.table, perm_destroy, 0);
+	(void)hashtab_map(cladatum->permissions.table, perm_destroy, 0);
 	hashtab_destroy(cladatum->permissions.table);
 	constraint = cladatum->constraints;
 	while (constraint) {
@@ -1261,7 +1305,7 @@ void policydb_destroy(policydb_t * p)
 	free(p->decl_val_to_struct);
 
 	for (i = 0; i < SYM_NUM; i++) {
-		hashtab_map(p->scope[i].table, scope_destroy, 0);
+		(void)hashtab_map(p->scope[i].table, scope_destroy, 0);
 		hashtab_destroy(p->scope[i].table);
 	}
 	avrule_block_list_destroy(p->global);
@@ -1351,7 +1395,7 @@ void symtabs_destroy(symtab_t * symtab)
 {
 	int i;
 	for (i = 0; i < SYM_NUM; i++) {
-		hashtab_map(symtab[i].table, destroy_f[i], 0);
+		(void)hashtab_map(symtab[i].table, destroy_f[i], 0);
 		hashtab_destroy(symtab[i].table);
 	}
 }
@@ -1998,6 +2042,10 @@ static int read_cons_helper(policydb_t * p, constraint_node_t ** nodep,
 				if (p->policy_type != POLICY_KERN &&
 				    type_set_read(e->type_names, fp))
 					return -1;
+				else if (p->policy_type == POLICY_KERN &&
+					 p->policyvers >= POLICYDB_VERSION_CONSTRAINT_NAMES &&
+					 type_set_read(e->type_names, fp))
+					return -1;
 				break;
 			default:
 				return -1;
@@ -2095,6 +2143,16 @@ static int class_read(policydb_t * p, hashtab_t h, struct policy_file *fp)
 		cladatum->default_user = le32_to_cpu(buf[0]);
 		cladatum->default_role = le32_to_cpu(buf[1]);
 		cladatum->default_range = le32_to_cpu(buf[2]);
+	}
+
+	if ((p->policy_type == POLICY_KERN &&
+	     p->policyvers >= POLICYDB_VERSION_DEFAULT_TYPE) ||
+	    (p->policy_type == POLICY_BASE &&
+	     p->policyvers >= MOD_POLICYDB_VERSION_DEFAULT_TYPE)) {
+		rc = next_entry(buf, fp, sizeof(uint32_t));
+		if (rc < 0)
+			goto bad;
+		cladatum->default_type = le32_to_cpu(buf[0]);
 	}
 
 	if (hashtab_insert(h, key, cladatum))
@@ -3402,6 +3460,8 @@ static int avrule_block_read(policydb_t * p,
 	uint32_t buf[1], num_blocks, nel;
 	int rc;
 
+	assert(*block == NULL);
+
 	rc = next_entry(buf, fp, sizeof(uint32_t));
 	if (rc < 0)
 		return -1;
@@ -3447,7 +3507,8 @@ static int avrule_block_read(policydb_t * p,
 			 * decl chain in its correct order */
 			if (curblock->branch_list == NULL) {
 				curblock->branch_list = curdecl;
-			} else if (last_decl != NULL) {
+			} else {
+				assert(last_decl);
 				last_decl->next = curdecl;
 			}
 			last_decl = curdecl;
@@ -3456,7 +3517,8 @@ static int avrule_block_read(policydb_t * p,
 
 		if (*block == NULL) {
 			*block = curblock;
-		} else if (last_block != NULL) {
+		} else {
+			assert(last_block);
 			last_block->next = curblock;
 		}
 		last_block = curblock;
