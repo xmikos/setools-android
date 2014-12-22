@@ -1,7 +1,7 @@
 ## Description
 
 This is unofficial port of [setools][1] to Android with additional
-[sepolicy-inject][2] utility included
+[sepolicy-inject][2] utility by Joshua Brindle
 
 Ported:
 
@@ -11,6 +11,7 @@ Ported:
 These tools allow to analyze SELinux/SEAndroid policy on an Android device.
 
 Included:
+
  * sepolicy-inject
  
 This tool injects allow rules into binary SELinux kernel policies.
@@ -45,3 +46,7 @@ This repository contains other opensource code:
  * regex (from OpenBSD)
  * bzip2
  * libsepol
+
+Based on [setools-android][3] by Dmitry Podgorny (pasis)
+
+[3]: https://github.com/pasis/setools-android
