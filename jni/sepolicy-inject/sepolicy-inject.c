@@ -42,28 +42,28 @@ int add_rule(char *s, char *t, char *c, char *p, policydb_t *policy) {
 	src = hashtab_search(policy->p_types.table, s);
 	if (src == NULL) {
 		fprintf(stderr, "source type %s does not exist\n", s);
-		return 1;
+		return 2;
 	}
 	tgt = hashtab_search(policy->p_types.table, t);
 	if (tgt == NULL) {
 		fprintf(stderr, "target type %s does not exist\n", t);
-		return 1;
+		return 2;
 	}
 	cls = hashtab_search(policy->p_classes.table, c);
 	if (cls == NULL) {
 		fprintf(stderr, "class %s does not exist\n", c);
-		return 1;
+		return 2;
 	}
 	perm = hashtab_search(cls->permissions.table, p);
 	if (perm == NULL) {
 		if (cls->comdatum == NULL) {
 			fprintf(stderr, "perm %s does not exist in class %s\n", p, c);
-			return 1;
+			return 2;
 		}
 		perm = hashtab_search(cls->comdatum->permissions.table, p);
 		if (perm == NULL) {
 			fprintf(stderr, "perm %s does not exist in class %s\n", p, c);
-			return 1;
+			return 2;
 		}
 	}
 
@@ -230,16 +230,17 @@ int main(int argc, char **argv) {
 		type = hashtab_search(policydb.p_types.table, permissive);
 		if (type == NULL) {
 			fprintf(stderr, "type %s does not exist\n", permissive);
-			return 1;
+			return 2;
 		}
 		if (ebitmap_set_bit(&policydb.permissive_map, type->s.value, 1)) {
 			fprintf(stderr, "Could not set bit in permissive map\n");
 			return 1;
 		}
 	} else {
-		if (add_rule(source, target, class, perm, &policydb)) {
+		int ret_add_rule;
+		if (ret_add_rule = add_rule(source, target, class, perm, &policydb)) {
 			fprintf(stderr, "Could not add rule\n");
-			return 1;
+			return ret_add_rule;
 		}
 	}
 
