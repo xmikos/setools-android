@@ -248,7 +248,7 @@ int main(int argc, char **argv) {
 		perm_token = strtok_r(perm, ",", &perm_saveptr);
 		while (perm_token) {
 			if (ret_add_rule = add_rule(source, target, class, perm_token, &policydb)) {
-				fprintf(stderr, "Could not add rule\n");
+				fprintf(stderr, "Could not add rule for perm: %s\n", perm_token);
 				return ret_add_rule;
 			}
 			perm_token = strtok_r(NULL, ",", &perm_saveptr);
@@ -283,5 +283,6 @@ int main(int argc, char **argv) {
 
 	policydb_destroy(&policydb);
 
+	fprintf(stdout, "Success\n");
 	return 0;
 }
