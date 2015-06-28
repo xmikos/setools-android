@@ -18,7 +18,7 @@
 #include <sepol/policydb/services.h>
 
 void usage(char *arg0) {
-	fprintf(stderr, "%s -s <source type> -t <target type> -c <class> -p <perm> [-P <policy file>] [-o <output file>] [-l|--load]\n", arg0);
+	fprintf(stderr, "%s -s <source type> -t <target type> -c <class> -p <perm>[,<perm2>,<perm3>,...] [-P <policy file>] [-o <output file>] [-l|--load]\n", arg0);
 	fprintf(stderr, "%s -Z permissive_type [-P <policy file>] [-o <output file>] [-l|--load]\n", arg0);
 	exit(1);
 }
@@ -164,11 +164,12 @@ int load_policy_into_kernel(policydb_t *policydb) {
 }
 
 int main(int argc, char **argv) {
-	char *policy = NULL, *source = NULL, *target = NULL, *class = NULL, *perm = NULL, *outfile = NULL, *permissive = NULL;
+	char *policy = NULL, *source = NULL, *target = NULL, *class = NULL, *perm = NULL, *perm_token = NULL, *perm_saveptr = NULL, *outfile = NULL, *permissive = NULL;
 	policydb_t policydb;
 	struct policy_file pf, outpf;
 	sidtab_t sidtab;
 	int ch;
+	int ret_add_rule;
 	int load = 0;
 	FILE *fp;
 
@@ -244,10 +245,13 @@ int main(int argc, char **argv) {
 			return 1;
 		}
 	} else {
-		int ret_add_rule;
-		if (ret_add_rule = add_rule(source, target, class, perm, &policydb)) {
-			fprintf(stderr, "Could not add rule\n");
-			return ret_add_rule;
+		perm_token = strtok_r(perm, ",", &perm_saveptr);
+		while (perm_token) {
+			if (ret_add_rule = add_rule(source, target, class, perm_token, &policydb)) {
+				fprintf(stderr, "Could not add rule\n");
+				return ret_add_rule;
+			}
+			perm_token = strtok_r(NULL, ",", &perm_saveptr);
 		}
 	}
 
