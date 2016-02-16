@@ -139,6 +139,8 @@ typedef char Char;
 #define	M_SET		META('[')
 #define	ismeta(c)	(((c)&M_QUOTE) != 0)
 
+/* This declaration is missed in android-21 */
+extern int issetugid(void);
 
 static int	 compare(const void *, const void *);
 static int	 g_Ctoc(const Char *, char *, size_t);

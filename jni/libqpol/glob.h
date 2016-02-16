@@ -36,15 +36,11 @@
 #ifndef _GLOB_H_
 #define	_GLOB_H_
 
-#include <sys/cdefs.h>
-#include <sys/_types.h>
+#include <stddef.h>	/* size_t */
 
-#ifndef	_SIZE_T_DECLARED
-typedef	__size_t	size_t;
-#define	_SIZE_T_DECLARED
-#endif
-
+struct dirent;
 struct stat;
+
 typedef struct {
 	size_t gl_pathc;	/* Count of total paths so far. */
 	size_t gl_matchc;	/* Count of paths matching pattern. */
