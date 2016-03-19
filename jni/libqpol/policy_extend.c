@@ -825,7 +825,7 @@ static int qpol_syn_rule_table_insert_sepol_avrule(qpol_policy_t * policy, qpol_
 			for (class_node = rule->perms; class_node; class_node = class_node->next) {
 				key.rule_type = rule->specified;
 				key.source_val = key.target_val = i + 1;
-				key.class_val = class_node->class;
+				key.class_val = class_node->tclass;
 				key.cond = cond;
 				if (qpol_syn_rule_table_insert_entry(policy, table, &key, new_rule))
 					goto err;
@@ -838,7 +838,7 @@ static int qpol_syn_rule_table_insert_sepol_avrule(qpol_policy_t * policy, qpol_
 				key.rule_type = rule->specified;
 				key.source_val = i + 1;
 				key.target_val = j + 1;
-				key.class_val = class_node->class;
+				key.class_val = class_node->tclass;
 				key.cond = cond;
 				if (qpol_syn_rule_table_insert_entry(policy, table, &key, new_rule))
 					goto err;

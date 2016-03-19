@@ -67,7 +67,7 @@ static void *syn_rule_class_state_get_cur(const qpol_iterator_t * iter)
 		return NULL;
 	}
 
-	return db->class_val_to_struct[srcs->cur->class - 1];
+	return db->class_val_to_struct[srcs->cur->tclass - 1];
 }
 
 static int syn_rule_class_state_next(qpol_iterator_t * iter)
@@ -465,10 +465,10 @@ int qpol_syn_avrule_get_perm_iter(const qpol_policy_t * policy, const qpol_syn_a
 	}
 
 	for (node = internal_rule->perms; node; node = node->next) {
-		for (i = 0; i < db->class_val_to_struct[node->class - 1]->permissions.nprim; i++) {
+		for (i = 0; i < db->class_val_to_struct[node->tclass - 1]->permissions.nprim; i++) {
 			if (!(node->data & (1 << i)))
 				continue;
-			tmp = sepol_av_to_string(db, node->class, (sepol_access_vector_t) (1 << i));
+			tmp = sepol_av_to_string(db, node->tclass, (sepol_access_vector_t) (1 << i));
 			if (tmp) {
 				tmp++; /* remove prepended space */
 				for (cur = 0; cur < perm_list_sz; cur++)

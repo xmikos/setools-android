@@ -1449,7 +1449,7 @@ int define_compute_type_helper(int which, avrule_t ** rule)
 				return -1;
 			}
 			class_perm_node_init(perm);
-			perm->class = i + 1;
+			perm->tclass = i + 1;
 			perm->data = datum->s.value;
 			perm->next = avrule->perms;
 			avrule->perms = perm;
@@ -1699,7 +1699,7 @@ int define_te_avtab_helper(int which, avrule_t ** rule)
 			goto out;
 		}
 		class_perm_node_init(cur_perms);
-		cur_perms->class = i + 1;
+		cur_perms->tclass = i + 1;
 		if (!perms)
 			perms = cur_perms;
 		if (tail)
