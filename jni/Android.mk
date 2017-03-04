@@ -35,8 +35,7 @@ LOCAL_C_INCLUDES := \
 	$(LOCAL_PATH)/libsepol/include
 
 LOCAL_SRC_FILES := \
-	sepolicy-inject/sepolicy-inject.c \
-	sepolicy-inject/tokenize.c
+	sepolicy-inject/sepolicy-inject.c
 
 LOCAL_STATIC_LIBRARIES := libsepol
 

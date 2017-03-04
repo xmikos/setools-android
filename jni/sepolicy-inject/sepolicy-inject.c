@@ -23,11 +23,9 @@
 #include <sepol/policydb/avrule_block.h>
 #include <sepol/policydb/conditional.h>
 
-#include "tokenize.h"
-
 void usage(char *arg0) {
 	fprintf(stderr, "Only one of the following can be run at a time\n");
-	fprintf(stderr, "%s -s <source type> -t <target type> -c <class> -p <perm> -P <policy file> [-o <output file>]\n", arg0);
+	fprintf(stderr, "%s -s <source type> -t <target type> -c <class> -p <perm>[,<perm2>,<perm3>,...] -P <policy file> [-o <output file>]\n", arg0);
 	fprintf(stderr, "%s -Z type_to_make_permissive -P <policy file> [-o <output file>]\n", arg0);
 	fprintf(stderr, "%s -z type_to_make_nonpermissive -P <policy file> [-o <output file>]\n", arg0);
 	exit(1);
@@ -116,7 +114,7 @@ int create_domain(char *d, policydb_t *policy) {
 	return value;
 }
 
-int add_rule(char *s, char *t, char *c, char **p, int num_perms, policydb_t *policy) {
+int add_rule(char *s, char *t, char *c, char *p, policydb_t *policy) {
 	type_datum_t *src, *tgt;
 	class_datum_t *cls;
 	perm_datum_t *perm;
@@ -141,23 +139,31 @@ int add_rule(char *s, char *t, char *c, char **p, int num_perms, policydb_t *pol
 
 	uint32_t data = 0;
 
-	int i = 0;
-	while (p[i]) {
-		perm = hashtab_search(cls->permissions.table, p[i]);
+	char *p_copy = strdup(p);
+	char *p_saveptr = NULL;
+	char *p_token;
+	if (p_copy == NULL) {
+		fprintf(stderr, "memory allocation error\n");
+		return 1;
+	}
+	p_token = strtok_r(p_copy, ",", &p_saveptr);
+	while (p_token) {
+		perm = hashtab_search(cls->permissions.table, p_token);
 		if (perm == NULL) {
 			if (cls->comdatum == NULL) {
-				fprintf(stderr, "perm %s does not exist in class %s\n", p[i], c);
+				fprintf(stderr, "perm %s does not exist in class %s\n", p_token, c);
 				return 2;
 			}
-			perm = hashtab_search(cls->comdatum->permissions.table, p[i]);
+			perm = hashtab_search(cls->comdatum->permissions.table, p_token);
 			if (perm == NULL) {
-				fprintf(stderr, "perm %s does not exist in class %s\n", p[i], c);
+				fprintf(stderr, "perm %s does not exist in class %s\n", p_token, c);
 				return 2;
 			}
 		}
 		data |= 1U << (perm->s.value - 1);
-		i++;
+		p_token = strtok_r(NULL, ",", &p_saveptr);
 	}
+	free(p_copy);
 
 	// See if there is already a rule
 	key.source_type = src->s.value;
@@ -235,8 +241,7 @@ int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
 int main(int argc, char **argv)
 {
 	char *policy = NULL, *source = NULL, *target = NULL, *class = NULL, *outfile = NULL;
-	char **perms = NULL;
-	size_t num_perms = 0;
+	char *perms = NULL;
 	policydb_t policydb;
 	struct policy_file pf, outpf;
 	sidtab_t sidtab;
@@ -278,11 +283,7 @@ int main(int argc, char **argv)
 			class = optarg;
 			break;
 		case 'p':
-			perms = str_split(optarg, ',');
-			if (perms == NULL) {
-				fprintf(stderr, "Could not tokenize permissions\n");
-				return 1;
-			}
+			perms = optarg;
 			break;
 		case 'P':
 			policy = optarg;
@@ -343,7 +344,7 @@ int main(int argc, char **argv)
 		}
 	} else if (selected == SEL_ADD_RULE) {
 		int ret_add_rule;
-		if (ret_add_rule = add_rule(source, target, class, perms, num_perms, &policydb)) {
+		if (ret_add_rule = add_rule(source, target, class, perms, &policydb)) {
 			fprintf(stderr, "Could not add rule\n");
 			return ret_add_rule;
 		}
