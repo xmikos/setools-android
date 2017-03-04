@@ -125,17 +125,17 @@ int add_rule(char *s, char *t, char *c, char **p, int num_perms, policydb_t *pol
 	src = hashtab_search(policy->p_types.table, s);
 	if (src == NULL) {
 		fprintf(stderr, "source type %s does not exist\n", s);
-		return 1;
+		return 2;
 	}
 	tgt = hashtab_search(policy->p_types.table, t);
 	if (tgt == NULL) {
 		fprintf(stderr, "target type %s does not exist\n", t);
-		return 1;
+		return 2;
 	}
 	cls = hashtab_search(policy->p_classes.table, c);
 	if (cls == NULL) {
 		fprintf(stderr, "class %s does not exist\n", c);
-		return 1;
+		return 2;
 	}
 
 	uint32_t data = 0;
@@ -146,12 +146,12 @@ int add_rule(char *s, char *t, char *c, char **p, int num_perms, policydb_t *pol
 		if (perm == NULL) {
 			if (cls->comdatum == NULL) {
 				fprintf(stderr, "perm %s does not exist in class %s\n", p[i], c);
-				return 1;
+				return 2;
 			}
 			perm = hashtab_search(cls->comdatum->permissions.table, p[i]);
 			if (perm == NULL) {
 				fprintf(stderr, "perm %s does not exist in class %s\n", p[i], c);
-				return 1;
+				return 2;
 			}
 		}
 		data |= 1U << (perm->s.value - 1);
@@ -190,19 +190,20 @@ int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
 	fd = open(filename, O_RDONLY);
 	if (fd < 0) {
 		fprintf(stderr, "Can't open '%s':  %s\n",
-				filename, strerror(errno));
+			filename, strerror(errno));
 		return 1;
 	}
 	if (fstat(fd, &sb) < 0) {
 		fprintf(stderr, "Can't stat '%s':  %s\n",
-				filename, strerror(errno));
+			filename, strerror(errno));
 		return 1;
 	}
 	map = mmap(NULL, sb.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE,
 				fd, 0);
 	if (map == MAP_FAILED) {
 		fprintf(stderr, "Can't mmap '%s':  %s\n",
-				filename, strerror(errno));
+			filename, strerror(errno));
+		close(fd);
 		return 1;
 	}
 
@@ -212,14 +213,20 @@ int load_policy(char *filename, policydb_t *policydb, struct policy_file *pf) {
 	pf->len = sb.st_size;
 	if (policydb_init(policydb)) {
 		fprintf(stderr, "policydb_init: Out of memory!\n");
+		munmap(map, sb.st_size);
+		close(fd);
 		return 1;
 	}
 	ret = policydb_read(policydb, pf, 1);
 	if (ret) {
 		fprintf(stderr, "error(s) encountered while parsing configuration\n");
+		munmap(map, sb.st_size);
+		close(fd);
 		return 1;
 	}
 
+	munmap(map, sb.st_size);
+	close(fd);
 	return 0;
 }
 
@@ -232,7 +239,7 @@ int main(int argc, char **argv)
 	policydb_t policydb;
 	struct policy_file pf, outpf;
 	sidtab_t sidtab;
-	char ch;
+	int ch;
 	FILE *fp;
 	int permissive_value = 0;
 	int typeval;
@@ -334,9 +341,10 @@ int main(int argc, char **argv)
 			return 1;
 		}
 	} else if (selected == SEL_ADD_RULE) {
-		if (add_rule(source, target, class, perms, num_perms, &policydb)) {
+		int ret_add_rule;
+		if (ret_add_rule = add_rule(source, target, class, perms, num_perms, &policydb)) {
 			fprintf(stderr, "Could not add rule\n");
-			return 1;
+			return ret_add_rule;
 		}
 	} else {
 		fprintf(stderr, "Something strange happened\n");
@@ -361,5 +369,6 @@ int main(int argc, char **argv)
 	policydb_destroy(&policydb);
 	fclose(fp);
 
+	fprintf(stdout, "Success\n");
 	return 0;
 }
