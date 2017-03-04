@@ -93,10 +93,11 @@ int create_domain(char *d, policydb_t *policy) {
 	ebitmap_set_bit(&policy->type_attr_map[value-1], value-1, 1);
 
 	//Add the domain to all roles
-	for (unsigned i = 0; i < policy->p_roles.nprim; ++i) {
+	unsigned i;
+	for (i = 0; i < policy->p_roles.nprim; ++i) {
 		//Not sure all those three calls are needed
-		ebitmap_set_bit(&policy->role_val_to_struct[i]->types.negset, value-1, 0);
-		ebitmap_set_bit(&policy->role_val_to_struct[i]->types.types, value-1, 1);
+		ebitmap_set_bit(&policy->role_val_to_struct[i]->types.negset, value - 1, 0);
+		ebitmap_set_bit(&policy->role_val_to_struct[i]->types.types, value - 1, 1);
 		type_set_expand(&policy->role_val_to_struct[i]->types, &policy->role_val_to_struct[i]->cache, policy, 0);
 	}
 
