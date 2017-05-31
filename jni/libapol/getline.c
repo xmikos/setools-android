@@ -14,16 +14,24 @@
  * limitations under the License.
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 ssize_t apol_getline(char **lineptr, size_t *n, FILE *stream)
 {
+#ifdef __ANDROID__
+
     char *ptr;
+    size_t len;
+
+    if (lineptr == NULL || n == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
 
     ptr = fgetln(stream, n);
-
     if (ptr == NULL) {
         return -1;
     }
@@ -32,13 +40,17 @@ ssize_t apol_getline(char **lineptr, size_t *n, FILE *stream)
     if (*lineptr != NULL) free(*lineptr);
 
     /* Add one more space for '\0' */
-    size_t len = n[0] + 1;
+    len = n[0] + 1;
 
     /* Update the length */
     n[0] = len;
 
     /* Allocate a new buffer */
     *lineptr = malloc(len);
+    if (*lineptr == NULL) {
+        errno = ENOMEM;
+        return -1;
+    }
 
     /* Copy over the string */
     memcpy(*lineptr, ptr, len-1);
@@ -47,5 +59,11 @@ ssize_t apol_getline(char **lineptr, size_t *n, FILE *stream)
     (*lineptr)[len-1] = '\0';
 
     /* Return the length of the new buffer */
-    return len;
+    return (ssize_t)len;
+
+#else /* __ANDROID__ */
+
+    return getdelim(lineptr, n, '\n', stream);
+
+#endif /* __ANDROID__ */
 }
