@@ -59,8 +59,7 @@ LOCAL_SRC_FILES := \
 	user_query.c \
 	util.c \
 	policy_parse.c \
-	policy_scan.c \
-	glob.c
+	policy_scan.c
 
 LOCAL_STATIC_LIBRARIES := libbz2 libsepol
 
