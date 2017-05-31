@@ -20,13 +20,23 @@ This tool injects allow rules into binary SELinux kernel policies.
 [2]: http://bitbucket.org/joshua_brindle/sepolicy-inject
 
 
-## Building
+## Building for Android
 
 Ensure that you have installed _android-ndk_ properly. Then run:
 
-    git clone https://github.com/xmikos/setools-android.git
-    cd setools-android
     ndk-build
+
+
+## Building for Linux
+
+setools-android can be built for *nix platform as stand-alone binaries without
+external dependencies. This build simplifies analysis of Android's sepolicy
+after dumping it from a device.
+
+    autoreconf -i
+    ./configure
+    make
+    cp ./seinfo ./sesearch ./sepolicy-inject /usr/local/bin (optional)
 
 
 ## Usage
@@ -47,6 +57,8 @@ This repository contains other opensource code:
  * bzip2
  * libsepol
 
-Based on [setools-android][3] by Dmitry Podgorny (pasis)
+Based on [pasis/setools-android][3] by Dmitry Podgorny (pasis) and
+[xmikos/setools-android][4] by Michal Krenek (Mikos)
 
 [3]: https://github.com/pasis/setools-android
+[4]: https://github.com/xmikos/setools-android
