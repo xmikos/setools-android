@@ -51,6 +51,7 @@ static int load_users(struct policydb *policydb, const char *path)
 	while(fgets(buffer, 255, fp) != NULL) {
 
 		lineno++;
+		nread = strlen(buffer);
 		if (buffer[nread - 1] == '\n')
 			buffer[nread - 1] = 0;
 		p = buffer;
