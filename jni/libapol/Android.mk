@@ -46,6 +46,7 @@ LOCAL_SRC_FILES := \
 	util.c \
 	vector.c \
 	getline.c \
+	regex/strlcpy.c \
 	regex/regcomp.c  \
 	regex/regerror.c  \
 	regex/regexec.c  \

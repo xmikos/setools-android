@@ -42,6 +42,7 @@
 #include <stdlib.h>
 #include <regex.h>
 
+#include "strlcpy.h"
 #include "utils.h"
 #include "regex2.h"
 
@@ -1179,7 +1180,7 @@ mcadd( struct parse *p, cset *cs, char *cp)
 	}
 	cs->multis = np;
 
-	strlcpy(cs->multis + oldend - 1, cp, cs->smultis - oldend + 1);
+	regex_strlcpy(cs->multis + oldend - 1, cp, cs->smultis - oldend + 1);
 }
 
 /*
