@@ -341,7 +341,7 @@ int apol_policy_path_to_file(const apol_policy_path_t * path, const char *filena
 		fclose(f);
 	}
 	if (retval != 0) {
-		error = errno;
+		errno = error;
 	}
 	return retval;
 }

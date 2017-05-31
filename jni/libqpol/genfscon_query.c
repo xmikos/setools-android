@@ -47,7 +47,6 @@ int qpol_policy_get_genfscon_by_name(const qpol_policy_t * policy, const char *n
 	genfs_t *tmp = NULL;
 	ocontext_t *tmp2 = NULL;
 	policydb_t *db = NULL;
-	int error = 0;
 
 	if (genfscon != NULL)
 		*genfscon = NULL;
@@ -74,7 +73,6 @@ int qpol_policy_get_genfscon_by_name(const qpol_policy_t * policy, const char *n
 	if (tmp && tmp2) {
 		*genfscon = calloc(1, sizeof(qpol_genfscon_t));
 		if (!(*genfscon)) {
-			error = errno;
 			ERR(policy, "%s", strerror(ENOMEM));
 			errno = errno;
 			return STATUS_ERR;
