@@ -141,7 +141,7 @@ seinfo_SOURCES = \
 	jni/secmds/seinfo.c
 seinfo_LDADD = $(secmds_libs)
 
-sesearch_CFLAGS = $(secmds_includes)
+sesearch_CFLAGS = $(secmds_includes) -std=c99
 sesearch_SOURCES = \
 	jni/secmds/sesearch.c
 sesearch_LDADD = $(secmds_libs)
