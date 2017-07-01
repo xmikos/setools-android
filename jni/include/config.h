@@ -105,25 +105,39 @@
 #define NDEBUG 1
 
 /* Name of package */
+#ifndef PACKAGE
 #define PACKAGE "setools"
+#endif
 
 /* Define to the address where bug reports for this package should be sent. */
+#ifndef PACKAGE_BUGREPORT
 #define PACKAGE_BUGREPORT "Tresys Technology <setools@tresys.com>"
+#endif
 
 /* Define to the full name of this package. */
+#ifndef PACKAGE_NAME
 #define PACKAGE_NAME "setools"
+#endif
 
 /* Define to the full name and version of this package. */
+#ifndef PACKAGE_STRING
 #define PACKAGE_STRING "setools 3.3.8"
+#endif
 
 /* Define to the one symbol short name of this package. */
+#ifndef PACKAGE_TARNAME
 #define PACKAGE_TARNAME "setools"
+#endif
 
 /* Define to the home page for this package. */
+#ifndef PACKAGE_URL
 #define PACKAGE_URL ""
+#endif
 
 /* Define to the version of this package. */
+#ifndef PACKAGE_VERSION
 #define PACKAGE_VERSION "3.3.8"
+#endif
 
 /* if avtab sizes are calculated dynamically by loader or are hardcoded */
 #define SEPOL_DYNAMIC_AVTAB 1
@@ -166,7 +180,9 @@
 
 
 /* Version number of package */
+#ifndef VERSION
 #define VERSION "3.3.8"
+#endif
 
 /* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
    significant byte first (like Motorola and SPARC, unlike Intel). */
