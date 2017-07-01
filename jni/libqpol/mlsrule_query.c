@@ -34,10 +34,17 @@
 #include <stdlib.h>
 #include "qpol_internal.h"
 
+typedef struct range_trans_item
+{
+	range_trans_t *rt;
+	mls_range_t *exp_range;
+	struct range_trans_item *next;
+} range_trans_item_t;
+
 typedef struct range_trans_state
 {
-	range_trans_t *head;
-	range_trans_t *cur;
+	range_trans_item_t *head;
+	range_trans_item_t *cur;
 } range_trans_state_t;
 
 static int range_trans_state_end(const qpol_iterator_t * iter)
@@ -87,7 +94,7 @@ static size_t range_trans_state_size(const qpol_iterator_t * iter)
 {
 	range_trans_state_t *rs = NULL;
 	size_t count = 0;
-	range_trans_t *tmp = NULL;
+	range_trans_item_t *tmp = NULL;
 
 	if (!iter || !(rs = qpol_iterator_state(iter))) {
 		errno = EINVAL;
@@ -98,6 +105,26 @@ static size_t range_trans_state_size(const qpol_iterator_t * iter)
 		count++;
 
 	return count;
+}
+
+static int _hashmap_to_list(hashtab_key_t key, hashtab_datum_t datum, void *ptr)
+{
+	range_trans_t *rt = (range_trans_t *)key;
+	mls_range_t *exp_range = (mls_range_t *)datum;
+	range_trans_state_t *rs = ptr;
+	range_trans_item_t *ri;
+
+	ri = calloc(1, sizeof(range_trans_item_t));
+	if (ri == NULL) {
+		errno = ENOMEM;
+		return STATUS_ERR;
+	}
+	ri->rt = rt;
+	ri->exp_range = exp_range;
+	ri->next = rs->head;
+	rs->head = ri;
+
+	return STATUS_SUCCESS;
 }
 
 int qpol_policy_get_range_trans_iter(const qpol_policy_t * policy, qpol_iterator_t ** iter)
@@ -133,7 +160,9 @@ int qpol_policy_get_range_trans_iter(const qpol_policy_t * policy, qpol_iterator
 		return STATUS_ERR;
 	}
 
-	rs->head = rs->cur = db->range_tr;
+	hashtab_map(db->range_tr, _hashmap_to_list, rs);
+	rs->cur = rs->head;
+
 	return STATUS_SUCCESS;
 }
 
@@ -153,7 +182,7 @@ int qpol_range_trans_get_source_type(const qpol_policy_t * policy, const qpol_ra
 	}
 
 	db = &policy->p->p;
-	rt = (range_trans_t *) rule;
+	rt = ((range_trans_item_t *)rule)->rt;
 
 	*source = (qpol_type_t *) db->type_val_to_struct[rt->source_type - 1];
 
@@ -176,7 +205,7 @@ int qpol_range_trans_get_target_type(const qpol_policy_t * policy, const qpol_ra
 	}
 
 	db = &policy->p->p;
-	rt = (range_trans_t *) rule;
+	rt = ((range_trans_item_t *)rule)->rt;
 
 	*target = (qpol_type_t *) db->type_val_to_struct[rt->target_type - 1];
 
@@ -199,7 +228,7 @@ int qpol_range_trans_get_target_class(const qpol_policy_t * policy, const qpol_r
 	}
 
 	db = &policy->p->p;
-	rt = (range_trans_t *) rule;
+	rt = ((range_trans_item_t *)rule)->rt;
 
 	*target = (qpol_class_t *) db->class_val_to_struct[rt->target_class - 1];
 
@@ -209,7 +238,7 @@ int qpol_range_trans_get_target_class(const qpol_policy_t * policy, const qpol_r
 int qpol_range_trans_get_range(const qpol_policy_t * policy, const qpol_range_trans_t * rule, const qpol_mls_range_t ** range)
 {
 	policydb_t *db = NULL;
-	range_trans_t *rt = NULL;
+	range_trans_item_t *item = NULL;
 
 	if (range) {
 		*range = NULL;
@@ -222,9 +251,9 @@ int qpol_range_trans_get_range(const qpol_policy_t * policy, const qpol_range_tr
 	}
 
 	db = &policy->p->p;
-	rt = (range_trans_t *) rule;
+	item = (range_trans_item_t *) rule;
 
-	*range = (qpol_mls_range_t *) & rt->target_range;
+	*range = (qpol_mls_range_t *) item->exp_range;
 
 	return STATUS_SUCCESS;
 }
