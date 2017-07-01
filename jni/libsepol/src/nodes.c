@@ -162,7 +162,6 @@ extern int sepol_node_count(sepol_handle_t * handle __attribute__ ((unused)),
 
 	*response = count;
 
-	handle = NULL;
 	return STATUS_SUCCESS;
 }
 
@@ -274,6 +273,7 @@ int sepol_node_query(sepol_handle_t * handle,
 							   c, SEPOL_PROTO_IP6,
 							   response) < 0)
 						goto err;
+					return STATUS_SUCCESS;
 				}
 			}
 			break;

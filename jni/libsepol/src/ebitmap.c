@@ -224,6 +224,28 @@ int ebitmap_contains(const ebitmap_t * e1, const ebitmap_t * e2)
 	return 1;
 }
 
+int ebitmap_match_any(const ebitmap_t *e1, const ebitmap_t *e2)
+{
+	ebitmap_node_t *n1 = e1->node;
+	ebitmap_node_t *n2 = e2->node;
+
+	while (n1 && n2) {
+		if (n1->startbit < n2->startbit) {
+			n1 = n1->next;
+		} else if (n2->startbit < n1->startbit) {
+			n2 = n2->next;
+		} else {
+			if (n1->map & n2->map) {
+				return 1;
+			}
+			n1 = n1->next;
+			n2 = n2->next;
+		}
+	}
+
+	return 0;
+}
+
 int ebitmap_get_bit(const ebitmap_t * e, unsigned int bit)
 {
 	ebitmap_node_t *n;
@@ -372,6 +394,10 @@ int ebitmap_read(ebitmap_t * e, void *fp)
 		     e->highbit, MAPSIZE);
 		goto bad;
 	}
+
+	if (e->highbit && !count)
+		goto bad;
+
 	l = NULL;
 	for (i = 0; i < count; i++) {
 		rc = next_entry(buf, fp, sizeof(uint32_t));
@@ -426,6 +452,12 @@ int ebitmap_read(ebitmap_t * e, void *fp)
 			e->node = n;
 
 		l = n;
+	}
+	if (count && l->startbit + MAPSIZE != e->highbit) {
+		printf
+		    ("security: ebitmap: hight bit %u has not the expected value %zu\n",
+		     e->highbit, l->startbit + MAPSIZE);
+		goto bad;
 	}
 
       ok:

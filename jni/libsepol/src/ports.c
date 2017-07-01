@@ -1,4 +1,7 @@
 #include <netinet/in.h>
+#ifndef IPPROTO_DCCP
+#define IPPROTO_DCCP 33
+#endif
 #include <stdlib.h>
 
 #include "debug.h"
@@ -16,6 +19,8 @@ static inline int sepol2ipproto(sepol_handle_t * handle, int proto)
 		return IPPROTO_TCP;
 	case SEPOL_PROTO_UDP:
 		return IPPROTO_UDP;
+	case SEPOL_PROTO_DCCP:
+		return IPPROTO_DCCP;
 	default:
 		ERR(handle, "unsupported protocol %u", proto);
 		return STATUS_ERR;
@@ -30,6 +35,8 @@ static inline int ipproto2sepol(sepol_handle_t * handle, int proto)
 		return SEPOL_PROTO_TCP;
 	case IPPROTO_UDP:
 		return SEPOL_PROTO_UDP;
+	case IPPROTO_DCCP:
+		return SEPOL_PROTO_DCCP;
 	default:
 		ERR(handle, "invalid protocol %u " "found in policy", proto);
 		return STATUS_ERR;
@@ -154,7 +161,6 @@ extern int sepol_port_count(sepol_handle_t * handle __attribute__ ((unused)),
 
 	*response = count;
 
-	handle = NULL;
 	return STATUS_SUCCESS;
 }
 

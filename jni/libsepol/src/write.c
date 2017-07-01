@@ -16,6 +16,7 @@
  *
  * Copyright (C) 2004-2005 Trusted Computer Solutions, Inc.
  * Copyright (C) 2003-2005 Tresys Technology, LLC
+ * Copyright (C) 2017 Mellanox Technologies Inc.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -50,7 +51,8 @@ struct policy_data {
 	struct policydb *p;
 };
 
-static int avrule_write_list(avrule_t * avrules, struct policy_file *fp);
+static int avrule_write_list(policydb_t *p,
+			     avrule_t * avrules, struct policy_file *fp);
 
 static int ebitmap_write(ebitmap_t * e, struct policy_file *fp)
 {
@@ -221,28 +223,32 @@ static int avtab_write_item(policydb_t * p,
 	items = put_entry(buf16, sizeof(uint16_t), 4, fp);
 	if (items != 4)
 		return POLICYDB_ERROR;
-	if ((p->policyvers < POLICYDB_VERSION_IOCTL_OPERATIONS) &&
-			(cur->key.specified & AVTAB_OP)) {
-		ERR(fp->handle, "policy version %u does not support ioctl operation"
-				" rules and one was specified", p->policyvers);
+	if ((p->policyvers < POLICYDB_VERSION_XPERMS_IOCTL) &&
+			(cur->key.specified & AVTAB_XPERMS)) {
+		ERR(fp->handle, "policy version %u does not support ioctl extended"
+				"permissions rules and one was specified", p->policyvers);
 		return POLICYDB_ERROR;
 	}
 
 	if (p->target_platform != SEPOL_TARGET_SELINUX &&
-			(cur->key.specified & AVTAB_OP)) {
+			(cur->key.specified & AVTAB_XPERMS)) {
 		ERR(fp->handle, "Target platform %s does not support ioctl "
-				"operation rules and one was specified",
+				"extended permissions rules and one was specified",
 				policydb_target_strings[p->target_platform]);
 		return POLICYDB_ERROR;
 	}
 
-	if (cur->key.specified & AVTAB_OP) {
-		buf8 = cur->datum.ops->type;
+	if (cur->key.specified & AVTAB_XPERMS) {
+		buf8 = cur->datum.xperms->specified;
 		items = put_entry(&buf8, sizeof(uint8_t),1,fp);
 		if (items != 1)
 			return POLICYDB_ERROR;
-		for (i = 0; i < ARRAY_SIZE(cur->datum.ops->perms); i++)
-			buf32[i] = cpu_to_le32(cur->datum.ops->perms[i]);
+		buf8 = cur->datum.xperms->driver;
+		items = put_entry(&buf8, sizeof(uint8_t),1,fp);
+		if (items != 1)
+			return POLICYDB_ERROR;
+		for (i = 0; i < ARRAY_SIZE(cur->datum.xperms->perms); i++)
+			buf32[i] = cpu_to_le32(cur->datum.xperms->perms[i]);
 		items = put_entry(buf32, sizeof(uint32_t),8,fp);
 		if (items != 8)
 			return POLICYDB_ERROR;
@@ -559,40 +565,55 @@ static int role_allow_write(role_allow_t * r, struct policy_file *fp)
 	return POLICYDB_SUCCESS;
 }
 
-static int filename_trans_write(filename_trans_t * r, struct policy_file *fp)
+static int filename_write_helper(hashtab_key_t key, void *data, void *ptr)
 {
-	filename_trans_t *ft;
 	uint32_t buf[4];
-	size_t nel, items, len;
+	size_t items, len;
+	struct filename_trans *ft = (struct filename_trans *)key;
+	struct filename_trans_datum *otype = data;
+	void *fp = ptr;
 
-	nel = 0;
-	for (ft = r; ft; ft = ft->next)
-		nel++;
+	len = strlen(ft->name);
+	buf[0] = cpu_to_le32(len);
+	items = put_entry(buf, sizeof(uint32_t), 1, fp);
+	if (items != 1)
+		return POLICYDB_ERROR;
+
+	items = put_entry(ft->name, sizeof(char), len, fp);
+	if (items != len)
+		return POLICYDB_ERROR;
+
+	buf[0] = cpu_to_le32(ft->stype);
+	buf[1] = cpu_to_le32(ft->ttype);
+	buf[2] = cpu_to_le32(ft->tclass);
+	buf[3] = cpu_to_le32(otype->otype);
+	items = put_entry(buf, sizeof(uint32_t), 4, fp);
+	if (items != 4)
+		return POLICYDB_ERROR;
+
+	return 0;
+}
+
+static int filename_trans_write(struct policydb *p, void *fp)
+{
+	size_t nel, items;
+	uint32_t buf[1];
+	int rc;
+
+	if (p->policyvers < POLICYDB_VERSION_FILENAME_TRANS)
+		return 0;
+
+	nel =  p->filename_trans->nel;
 	buf[0] = cpu_to_le32(nel);
 	items = put_entry(buf, sizeof(uint32_t), 1, fp);
 	if (items != 1)
 		return POLICYDB_ERROR;
-	for (ft = r; ft; ft = ft->next) {
-		len = strlen(ft->name);
-		buf[0] = cpu_to_le32(len);
-		items = put_entry(buf, sizeof(uint32_t), 1, fp);
-		if (items != 1)
-			return POLICYDB_ERROR;
 
-		items = put_entry(ft->name, sizeof(char), len, fp);
-		if (items != len)
-			return POLICYDB_ERROR;
+	rc = hashtab_map(p->filename_trans, filename_write_helper, fp);
+	if (rc)
+		return rc;
 
-		buf[0] = cpu_to_le32(ft->stype);
-		buf[1] = cpu_to_le32(ft->ttype);
-		buf[2] = cpu_to_le32(ft->tclass);
-		buf[3] = cpu_to_le32(ft->otype);
-		items = put_entry(buf, sizeof(uint32_t), 4, fp);
-		if (items != 4)
-			return POLICYDB_ERROR;
-	}
-
-	return POLICYDB_SUCCESS;
+	return 0;
 }
 
 static int role_set_write(role_set_t * x, struct policy_file *fp)
@@ -760,9 +781,9 @@ static int cond_write_node(policydb_t * p,
 		if (cond_write_av_list(p, node->false_list, fp) != 0)
 			return POLICYDB_ERROR;
 	} else {
-		if (avrule_write_list(node->avtrue_list, fp))
+		if (avrule_write_list(p, node->avtrue_list, fp))
 			return POLICYDB_ERROR;
-		if (avrule_write_list(node->avfalse_list, fp))
+		if (avrule_write_list(p, node->avfalse_list, fp))
 			return POLICYDB_ERROR;
 	}
 
@@ -907,7 +928,6 @@ static int write_cons_helper(policydb_t * p,
 		if (items != 2)
 			return POLICYDB_ERROR;
 		for (e = c->expr; e; e = e->next) {
-			items = 0;
 			buf[0] = cpu_to_le32(e->expr_type);
 			buf[1] = cpu_to_le32(e->attr);
 			buf[2] = cpu_to_le32(e->op);
@@ -1074,8 +1094,25 @@ static int role_write(hashtab_key_t key, hashtab_datum_t datum, void *ptr)
 	if (ebitmap_write(&role->dominates, fp))
 		return POLICYDB_ERROR;
 	if (p->policy_type == POLICY_KERN) {
-		if (ebitmap_write(&role->types.types, fp))
-			return POLICYDB_ERROR;
+		if (role->s.value == OBJECT_R_VAL) {
+			/*
+			 * CIL populates object_r's types map
+			 * rather than handling it as a special case.
+			 * However, this creates an inconsistency with
+			 * the kernel policy read from /sys/fs/selinux/policy
+			 * because the kernel ignores everything except for
+			 * object_r's value from the policy file.
+			 * Make them consistent by writing an empty
+			 * ebitmap instead.
+			 */
+			ebitmap_t empty;
+			ebitmap_init(&empty);
+			if (ebitmap_write(&empty, fp))
+				return POLICYDB_ERROR;
+		} else {
+			if (ebitmap_write(&role->types.types, fp))
+				return POLICYDB_ERROR;
+		}
 	} else {
 		if (type_set_write(&role->types, fp))
 			return POLICYDB_ERROR;
@@ -1240,7 +1277,7 @@ static int ocontext_write_xen(struct policydb_compat_info *info, policydb_t *p,
 			  struct policy_file *fp)
 {
 	unsigned int i, j;
-	size_t nel, items;
+	size_t nel, items, len;
 	uint32_t buf[32];
 	ocontext_t *c;
 	for (i = 0; i < info->ocon_num; i++) {
@@ -1281,13 +1318,31 @@ static int ocontext_write_xen(struct policydb_compat_info *info, policydb_t *p,
 					return POLICYDB_ERROR;
 				break;
 			case OCON_XEN_IOMEM:
-				buf[0] = c->u.iomem.low_iomem;
-				buf[1] = c->u.iomem.high_iomem;
-				for (j = 0; j < 2; j++)
-					buf[j] = cpu_to_le32(buf[j]);
-				items = put_entry(buf, sizeof(uint32_t), 2, fp);
-				if (items != 2)
-					return POLICYDB_ERROR;
+				if (p->policyvers >= POLICYDB_VERSION_XEN_DEVICETREE) {
+					uint64_t b64[2];
+					b64[0] = c->u.iomem.low_iomem;
+					b64[1] = c->u.iomem.high_iomem;
+					for (j = 0; j < 2; j++)
+						b64[j] = cpu_to_le64(b64[j]);
+					items = put_entry(b64, sizeof(uint64_t), 2, fp);
+					if (items != 2)
+						return POLICYDB_ERROR;
+				} else {
+					if (c->u.iomem.high_iomem > 0xFFFFFFFFULL) {
+						ERR(fp->handle, "policy version %d"
+							" cannot represent IOMEM addresses over 16TB",
+							p->policyvers);
+						return POLICYDB_ERROR;
+					}
+
+					buf[0] = c->u.iomem.low_iomem;
+					buf[1] = c->u.iomem.high_iomem;
+					for (j = 0; j < 2; j++)
+						buf[j] = cpu_to_le32(buf[j]);
+					items = put_entry(buf, sizeof(uint32_t), 2, fp);
+					if (items != 2)
+						return POLICYDB_ERROR;
+				}
 				if (context_write(p, &c->context[0], fp))
 					return POLICYDB_ERROR;
 				break;
@@ -1295,6 +1350,18 @@ static int ocontext_write_xen(struct policydb_compat_info *info, policydb_t *p,
 				buf[0] = cpu_to_le32(c->u.device);
 				items = put_entry(buf, sizeof(uint32_t), 1, fp);
 				if (items != 1)
+					return POLICYDB_ERROR;
+				if (context_write(p, &c->context[0], fp))
+					return POLICYDB_ERROR;
+				break;
+			case OCON_XEN_DEVICETREE:
+				len = strlen(c->u.name);
+				buf[0] = cpu_to_le32(len);
+				items = put_entry(buf, sizeof(uint32_t), 1, fp);
+				if (items != 1)
+					return POLICYDB_ERROR;
+				items = put_entry(c->u.name, 1, len, fp);
+				if (items != len)
 					return POLICYDB_ERROR;
 				if (context_write(p, &c->context[0], fp))
 					return POLICYDB_ERROR;
@@ -1343,6 +1410,35 @@ static int ocontext_write_selinux(struct policydb_compat_info *info,
 				if (context_write(p, &c->context[0], fp))
 					return POLICYDB_ERROR;
 				if (context_write(p, &c->context[1], fp))
+					return POLICYDB_ERROR;
+				break;
+			case OCON_IBPKEY:
+				 /* The subnet prefix is in network order */
+				memcpy(buf, &c->u.ibpkey.subnet_prefix,
+				       sizeof(c->u.ibpkey.subnet_prefix));
+
+				buf[2] = cpu_to_le32(c->u.ibpkey.low_pkey);
+				buf[3] = cpu_to_le32(c->u.ibpkey.high_pkey);
+
+				items = put_entry(buf, sizeof(uint32_t), 4, fp);
+				if (items != 4)
+					return POLICYDB_ERROR;
+
+				if (context_write(p, &c->context[0], fp))
+					return POLICYDB_ERROR;
+				break;
+			case OCON_IBENDPORT:
+				len = strlen(c->u.ibendport.dev_name);
+				buf[0] = cpu_to_le32(len);
+				buf[1] = cpu_to_le32(c->u.ibendport.port);
+				items = put_entry(buf, sizeof(uint32_t), 2, fp);
+				if (items != 2)
+					return POLICYDB_ERROR;
+				items = put_entry(c->u.ibendport.dev_name, 1, len, fp);
+				if (items != len)
+					return POLICYDB_ERROR;
+
+				if (context_write(p, &c->context[0], fp))
 					return POLICYDB_ERROR;
 				break;
 			case OCON_PORT:
@@ -1461,56 +1557,95 @@ static int genfs_write(policydb_t * p, struct policy_file *fp)
 	return POLICYDB_SUCCESS;
 }
 
+
+struct rangetrans_write_args {
+	size_t nel;
+	int new_rangetr;
+	struct policy_file *fp;
+};
+
+static int rangetrans_count(hashtab_key_t key,
+			    void *data __attribute__ ((unused)),
+			    void *ptr)
+{
+	struct range_trans *rt = (struct range_trans *)key;
+	struct rangetrans_write_args *args = ptr;
+
+	/* all range_transitions are written for the new format, only
+	   process related range_transitions are written for the old
+	   format, so count accordingly */
+	if (args->new_rangetr || rt->target_class == SECCLASS_PROCESS)
+		args->nel++;
+	return 0;
+}
+
+static int range_write_helper(hashtab_key_t key, void *data, void *ptr)
+{
+	uint32_t buf[2];
+	struct range_trans *rt = (struct range_trans *)key;
+	struct mls_range *r = data;
+	struct rangetrans_write_args *args = ptr;
+	struct policy_file *fp = args->fp;
+	int new_rangetr = args->new_rangetr;
+	size_t items;
+	static int warning_issued = 0;
+	int rc;
+
+	if (!new_rangetr && rt->target_class != SECCLASS_PROCESS) {
+		if (!warning_issued)
+			WARN(fp->handle, "Discarding range_transition "
+			     "rules for security classes other than "
+			     "\"process\"");
+		warning_issued = 1;
+		return 0;
+	}
+
+	buf[0] = cpu_to_le32(rt->source_type);
+	buf[1] = cpu_to_le32(rt->target_type);
+	items = put_entry(buf, sizeof(uint32_t), 2, fp);
+	if (items != 2)
+		return POLICYDB_ERROR;
+	if (new_rangetr) {
+		buf[0] = cpu_to_le32(rt->target_class);
+		items = put_entry(buf, sizeof(uint32_t), 1, fp);
+		if (items != 1)
+			return POLICYDB_ERROR;
+	}
+	rc = mls_write_range_helper(r, fp);
+	if (rc)
+		return rc;
+
+	return 0;
+}
+
 static int range_write(policydb_t * p, struct policy_file *fp)
 {
-	size_t nel, items;
-	struct range_trans *rt;
+	size_t items;
 	uint32_t buf[2];
 	int new_rangetr = (p->policy_type == POLICY_KERN &&
 			   p->policyvers >= POLICYDB_VERSION_RANGETRANS);
-	int warning_issued = 0;
+	struct rangetrans_write_args args;
+	int rc;
 
-	nel = 0;
-	for (rt = p->range_tr; rt; rt = rt->next) {
-		/* all range_transitions are written for the new format, only
-		   process related range_transitions are written for the old
-		   format, so count accordingly */
-		if (new_rangetr || rt->target_class == SECCLASS_PROCESS)
-			nel++;
-	}
-	buf[0] = cpu_to_le32(nel);
+	args.nel = 0;
+	args.new_rangetr = new_rangetr;
+	args.fp = fp;
+	rc = hashtab_map(p->range_tr, rangetrans_count, &args);
+	if (rc)
+		return rc;
+
+	buf[0] = cpu_to_le32(args.nel);
 	items = put_entry(buf, sizeof(uint32_t), 1, fp);
 	if (items != 1)
 		return POLICYDB_ERROR;
-	for (rt = p->range_tr; rt; rt = rt->next) {
-		if (!new_rangetr && rt->target_class != SECCLASS_PROCESS) {
-			if (!warning_issued)
-				WARN(fp->handle, "Discarding range_transition "
-				     "rules for security classes other than "
-				     "\"process\"");
-			warning_issued = 1;
-			continue;
-		}
-		buf[0] = cpu_to_le32(rt->source_type);
-		buf[1] = cpu_to_le32(rt->target_type);
-		items = put_entry(buf, sizeof(uint32_t), 2, fp);
-		if (items != 2)
-			return POLICYDB_ERROR;
-		if (new_rangetr) {
-			buf[0] = cpu_to_le32(rt->target_class);
-			items = put_entry(buf, sizeof(uint32_t), 1, fp);
-			if (items != 1)
-				return POLICYDB_ERROR;
-		}
-		if (mls_write_range_helper(&rt->target_range, fp))
-			return POLICYDB_ERROR;
-	}
-	return POLICYDB_SUCCESS;
+
+	return hashtab_map(p->range_tr, range_write_helper, &args);
 }
 
 /************** module writing functions below **************/
 
-static int avrule_write(avrule_t * avrule, struct policy_file *fp)
+static int avrule_write(policydb_t *p, avrule_t * avrule,
+			struct policy_file *fp)
 {
 	size_t items, items2;
 	uint32_t buf[32], len;
@@ -1552,10 +1687,48 @@ static int avrule_write(avrule_t * avrule, struct policy_file *fp)
 		cur = cur->next;
 	}
 
+	if (avrule->specified & AVRULE_XPERMS) {
+		size_t nel = ARRAY_SIZE(avrule->xperms->perms);
+		uint32_t buf32[nel];
+		uint8_t buf8;
+		unsigned int i;
+
+		if (p->policyvers < MOD_POLICYDB_VERSION_XPERMS_IOCTL) {
+			ERR(fp->handle,
+			    "module policy version %u does not support ioctl"
+			    " extended permissions rules and one was specified",
+			    p->policyvers);
+			return POLICYDB_ERROR;
+		}
+
+		if (p->target_platform != SEPOL_TARGET_SELINUX) {
+			ERR(fp->handle,
+			    "Target platform %s does not support ioctl"
+			    " extended permissions rules and one was specified",
+			    policydb_target_strings[p->target_platform]);
+			return POLICYDB_ERROR;
+		}
+
+		buf8 = avrule->xperms->specified;
+		items = put_entry(&buf8, sizeof(uint8_t),1,fp);
+		if (items != 1)
+			return POLICYDB_ERROR;
+		buf8 = avrule->xperms->driver;
+		items = put_entry(&buf8, sizeof(uint8_t),1,fp);
+		if (items != 1)
+			return POLICYDB_ERROR;
+		for (i = 0; i < nel; i++)
+			buf32[i] = cpu_to_le32(avrule->xperms->perms[i]);
+		items = put_entry(buf32, sizeof(uint32_t), nel, fp);
+		if (items != nel)
+			return POLICYDB_ERROR;
+	}
+
 	return POLICYDB_SUCCESS;
 }
 
-static int avrule_write_list(avrule_t * avrules, struct policy_file *fp)
+static int avrule_write_list(policydb_t *p, avrule_t * avrules,
+			     struct policy_file *fp)
 {
 	uint32_t buf[32], len;
 	avrule_t *avrule;
@@ -1573,7 +1746,8 @@ static int avrule_write_list(avrule_t * avrules, struct policy_file *fp)
 
 	avrule = avrules;
 	while (avrule) {
-		avrule_write(avrule, fp);
+		if (avrule_write(p, avrule, fp))
+			return POLICYDB_ERROR;
 		avrule = avrule->next;
 	}
 
@@ -1760,7 +1934,7 @@ static int avrule_decl_write(avrule_decl_t * decl, int num_scope_syms,
 		return POLICYDB_ERROR;
 	}
 	if (cond_write_list(p, decl->cond_list, fp) == -1 ||
-	    avrule_write_list(decl->avrules, fp) == -1 ||
+	    avrule_write_list(p, decl->avrules, fp) == -1 ||
 	    role_trans_rule_write(p, decl->role_tr_rules, fp) == -1 ||
 	    role_allow_rule_write(decl->role_allow_rules, fp) == -1) {
 		return POLICYDB_ERROR;
@@ -2078,7 +2252,7 @@ int policydb_write(policydb_t * p, struct policy_file *fp)
 		if (role_allow_write(p->role_allow, fp))
 			return POLICYDB_ERROR;
 		if (p->policyvers >= POLICYDB_VERSION_FILENAME_TRANS) {
-			if (filename_trans_write(p->filename_trans, fp))
+			if (filename_trans_write(p, fp))
 				return POLICYDB_ERROR;
 		} else {
 			if (p->filename_trans)

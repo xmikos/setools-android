@@ -111,11 +111,19 @@ libsepol_a_SOURCES = \
 	jni/libsepol/src/handle.c \
 	jni/libsepol/src/hashtab.c \
 	jni/libsepol/src/hierarchy.c \
+	jni/libsepol/src/ibendport_record.c \
+	jni/libsepol/src/ibendports.c \
+	jni/libsepol/src/ibpkey_record.c \
+	jni/libsepol/src/ibpkeys.c \
 	jni/libsepol/src/iface_record.c \
 	jni/libsepol/src/interfaces.c \
+	jni/libsepol/src/kernel_to_cil.c \
+	jni/libsepol/src/kernel_to_common.c \
+	jni/libsepol/src/kernel_to_conf.c \
 	jni/libsepol/src/link.c \
 	jni/libsepol/src/mls.c \
 	jni/libsepol/src/module.c \
+	jni/libsepol/src/module_to_cil.c \
 	jni/libsepol/src/node_record.c \
 	jni/libsepol/src/nodes.c \
 	jni/libsepol/src/polcaps.c \

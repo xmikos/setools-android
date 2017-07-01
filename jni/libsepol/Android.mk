@@ -18,11 +18,19 @@ common_src_files := \
 	src/handle.c \
 	src/hashtab.c \
 	src/hierarchy.c \
+	src/ibendport_record.c \
+	src/ibendports.c \
+	src/ibpkey_record.c \
+	src/ibpkeys.c \
 	src/iface_record.c \
 	src/interfaces.c \
+	src/kernel_to_cil.c \
+	src/kernel_to_common.c \
+	src/kernel_to_conf.c \
 	src/link.c \
 	src/mls.c \
 	src/module.c \
+	src/module_to_cil.c \
 	src/node_record.c \
 	src/nodes.c \
 	src/polcaps.c \

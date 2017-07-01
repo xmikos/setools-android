@@ -13,10 +13,8 @@ int sepol_role_exists(sepol_handle_t * handle __attribute__ ((unused)),
 {
 
 	policydb_t *policydb = &p->p;
-	*response = (hashtab_search(policydb->p_roles.table,
-				    (const hashtab_key_t)role) != NULL);
+	*response = (hashtab_search(policydb->p_roles.table, role) != NULL);
 
-	handle = NULL;
 	return STATUS_SUCCESS;
 }
 
