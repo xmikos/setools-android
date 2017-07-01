@@ -94,6 +94,7 @@ libqpol_a_SOURCES = \
 libsepol_includes = -Ijni/libsepol/include -Ijni/libsepol/src
 libsepol_a_CFLAGS = $(libsepol_includes)
 libsepol_a_SOURCES = \
+	jni/libsepol/src/android_m_compat.c \
 	jni/libsepol/src/assertion.c \
 	jni/libsepol/src/avrule_block.c \
 	jni/libsepol/src/avtab.c \

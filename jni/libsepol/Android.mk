@@ -1,6 +1,7 @@
 LOCAL_PATH:= $(call my-dir)
 
 common_src_files := \
+	src/android_m_compat.c \
 	src/assertion.c \
 	src/avrule_block.c \
 	src/avtab.c \
