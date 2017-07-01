@@ -42,6 +42,7 @@ common_src_files := \
 	src/roles.c \
 	src/services.c \
 	src/sidtab.c \
+	src/stpcpy.c \
 	src/symtab.c \
 	src/user_record.c \
 	src/users.c \

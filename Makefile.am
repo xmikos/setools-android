@@ -135,6 +135,7 @@ libsepol_a_SOURCES = \
 	jni/libsepol/src/roles.c \
 	jni/libsepol/src/services.c \
 	jni/libsepol/src/sidtab.c \
+	jni/libsepol/src/stpcpy.c \
 	jni/libsepol/src/symtab.c \
 	jni/libsepol/src/user_record.c \
 	jni/libsepol/src/users.c \

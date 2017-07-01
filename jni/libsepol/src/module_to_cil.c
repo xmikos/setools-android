@@ -50,6 +50,7 @@
 #include <sepol/policydb/util.h>
 
 #include "private.h"
+#include "stpcpy.h"
 
 #ifdef __GNUC__
 #  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
@@ -1160,7 +1161,7 @@ static int name_list_to_string(char **names, int num_names, char **string)
 	strpos = str;
 
 	for (i = 0; i < num_names; i++) {
-		strpos = stpcpy(strpos, names[i]);
+		strpos = sepol_stpcpy(strpos, names[i]);
 		if (i < num_names - 1) {
 			*strpos++ = ' ';
 		}
