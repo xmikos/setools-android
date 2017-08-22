@@ -295,7 +295,7 @@ int main(int argc, char **argv)
 		{NULL, 0, NULL, 0}
 	};
 
-	while ((ch = getopt_long(argc, argv, "s:t:c:p:P:o:Z:z:l:", long_options, NULL)) != -1) {
+	while ((ch = getopt_long(argc, argv, "s:t:c:p:P:o:Z:z:l", long_options, NULL)) != -1) {
 		switch (ch) {
 		case 's':
 			if (selected) {
