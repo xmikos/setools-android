@@ -5,7 +5,7 @@
 #include <sepol/policydb/policydb.h>
 
 
-#ifdef DARWIN
+#ifdef __APPLE__
 #include <sys/types.h>
 #include <machine/endian.h>
 #else
@@ -16,7 +16,7 @@
 #include <errno.h>
 #include <dso.h>
 
-#ifdef DARWIN
+#ifdef __APPLE__
 #define __BYTE_ORDER  BYTE_ORDER
 #define __LITTLE_ENDIAN  LITTLE_ENDIAN
 #endif
@@ -45,6 +45,9 @@
 
 #define ARRAY_SIZE(x) (sizeof(x)/sizeof((x)[0]))
 
+#define is_saturated(x) (x == (typeof(x))-1)
+#define zero_or_saturated(x) ((x == 0) || is_saturated(x))
+
 /* Policy compatibility information. */
 struct policydb_compat_info {
 	unsigned int type;
@@ -62,3 +65,4 @@ extern struct policydb_compat_info *policydb_lookup_compat(unsigned int version,
 extern int next_entry(void *buf, struct policy_file *fp, size_t bytes) hidden;
 extern size_t put_entry(const void *ptr, size_t size, size_t n,
 		        struct policy_file *fp) hidden;
+extern int str_read(char **strp, struct policy_file *fp, size_t len) hidden;

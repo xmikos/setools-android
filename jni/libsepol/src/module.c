@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <inttypes.h>
 
 #define SEPOL_PACKAGE_SECTION_FC 0xf97cff90
 #define SEPOL_PACKAGE_SECTION_SEUSER 0x97cff91
@@ -626,7 +627,7 @@ int sepol_module_package_read(sepol_module_package_t * mod,
 		default:
 			/* unknown section, ignore */
 			ERR(file->handle,
-			    "unknown magic number at section %u, offset: %zx, number: %ux ",
+			    "unknown magic number at section %u, offset: %zx, number: %x ",
 			    i, offsets[i], le32_to_cpu(buf[0]));
 			break;
 		}
@@ -792,20 +793,13 @@ int sepol_module_package_info(struct sepol_policy_file *spf, int *type,
 				    i);
 				goto cleanup;
 			}
+
 			len = le32_to_cpu(buf[0]);
-			*name = malloc(len + 1);
-			if (!*name) {
-				ERR(file->handle, "out of memory");
+			if (str_read(name, file, len)) {
+				ERR(file->handle, "%s", strerror(errno));
 				goto cleanup;
 			}
-			rc = next_entry(*name, file, len);
-			if (rc < 0) {
-				ERR(file->handle,
-				    "cannot get module name string (at section %u)",
-				    i);
-				goto cleanup;
-			}
-			(*name)[len] = '\0';
+
 			rc = next_entry(buf, file, sizeof(uint32_t));
 			if (rc < 0) {
 				ERR(file->handle,
@@ -814,19 +808,10 @@ int sepol_module_package_info(struct sepol_policy_file *spf, int *type,
 				goto cleanup;
 			}
 			len = le32_to_cpu(buf[0]);
-			*version = malloc(len + 1);
-			if (!*version) {
-				ERR(file->handle, "out of memory");
+			if (str_read(version, file, len)) {
+				ERR(file->handle, "%s", strerror(errno));
 				goto cleanup;
 			}
-			rc = next_entry(*version, file, len);
-			if (rc < 0) {
-				ERR(file->handle,
-				    "cannot get module version string (at section %u)",
-				    i);
-				goto cleanup;
-			}
-			(*version)[len] = '\0';
 			seen |= SEEN_MOD;
 			break;
 		default:

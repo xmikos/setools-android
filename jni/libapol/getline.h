@@ -1,3 +1,5 @@
+/* Replacement for getline(3) which is absent in bionic. */
+
 #ifndef __GETLINE_H__
 #define __GETLINE_H__
 

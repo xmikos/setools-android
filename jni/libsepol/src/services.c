@@ -21,6 +21,7 @@
  * Copyright (C) 2004-2005 Trusted Computer Solutions, Inc.
  * Copyright (C) 2003 - 2004 Tresys Technology, LLC
  * Copyright (C) 2003 - 2004 Red Hat, Inc.
+ * Copyright (C) 2017 Mellanox Technologies Inc.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -824,6 +825,67 @@ out:
 	return rc;
 }
 
+/* Forward declaration */
+static int context_struct_compute_av(context_struct_t * scontext,
+				     context_struct_t * tcontext,
+				     sepol_security_class_t tclass,
+				     sepol_access_vector_t requested,
+				     struct sepol_av_decision *avd,
+				     unsigned int *reason,
+				     char **r_buf,
+				     unsigned int flags);
+
+static void type_attribute_bounds_av(context_struct_t *scontext,
+				     context_struct_t *tcontext,
+				     sepol_security_class_t tclass,
+				     sepol_access_vector_t requested,
+				     struct sepol_av_decision *avd,
+				     unsigned int *reason)
+{
+	context_struct_t lo_scontext;
+	context_struct_t lo_tcontext, *tcontextp = tcontext;
+	struct sepol_av_decision lo_avd;
+	type_datum_t *source;
+	type_datum_t *target;
+	sepol_access_vector_t masked = 0;
+
+	source = policydb->type_val_to_struct[scontext->type - 1];
+	if (!source->bounds)
+		return;
+
+	target = policydb->type_val_to_struct[tcontext->type - 1];
+
+	memset(&lo_avd, 0, sizeof(lo_avd));
+
+	memcpy(&lo_scontext, scontext, sizeof(lo_scontext));
+	lo_scontext.type = source->bounds;
+
+	if (target->bounds) {
+		memcpy(&lo_tcontext, tcontext, sizeof(lo_tcontext));
+		lo_tcontext.type = target->bounds;
+		tcontextp = &lo_tcontext;
+	}
+
+	context_struct_compute_av(&lo_scontext,
+				  tcontextp,
+				  tclass,
+				  requested,
+				  &lo_avd,
+				  NULL, /* reason intentionally omitted */
+				  NULL,
+				  0);
+
+	masked = ~lo_avd.allowed & avd->allowed;
+
+	if (!masked)
+		return;		/* no masked permission */
+
+	/* mask violated permissions */
+	avd->allowed &= ~masked;
+
+	*reason |= SEPOL_COMPUTEAV_BOUNDS;
+}
+
 /*
  * Compute access vectors based on a context structure pair for
  * the permissions in a particular class.
@@ -835,7 +897,7 @@ static int context_struct_compute_av(context_struct_t * scontext,
 				     struct sepol_av_decision *avd,
 				     unsigned int *reason,
 				     char **r_buf,
-					 unsigned int flags)
+				     unsigned int flags)
 {
 	constraint_node_t *constraint;
 	struct role_allow *ra;
@@ -860,7 +922,8 @@ static int context_struct_compute_av(context_struct_t * scontext,
 	avd->auditallow = 0;
 	avd->auditdeny = 0xffffffff;
 	avd->seqno = latest_granting;
-	*reason = 0;
+	if (reason)
+		*reason = 0;
 
 	/*
 	 * If a specific type enforcement rule was defined for
@@ -899,7 +962,8 @@ static int context_struct_compute_av(context_struct_t * scontext,
 	}
 
 	if (requested & ~avd->allowed) {
-		*reason |= SEPOL_COMPUTEAV_TE;
+		if (reason)
+			*reason |= SEPOL_COMPUTEAV_TE;
 		requested &= avd->allowed;
 	}
 
@@ -919,7 +983,8 @@ static int context_struct_compute_av(context_struct_t * scontext,
 	}
 
 	if (requested & ~avd->allowed) {
-		*reason |= SEPOL_COMPUTEAV_CONS;
+		if (reason)
+			*reason |= SEPOL_COMPUTEAV_CONS;
 		requested &= avd->allowed;
 	}
 
@@ -942,10 +1007,13 @@ static int context_struct_compute_av(context_struct_t * scontext,
 	}
 
 	if (requested & ~avd->allowed) {
-		*reason |= SEPOL_COMPUTEAV_RBAC;
+		if (reason)
+			*reason |= SEPOL_COMPUTEAV_RBAC;
 		requested &= avd->allowed;
 	}
 
+	type_attribute_bounds_av(scontext, tcontext, tclass, requested, avd,
+				 reason);
 	return 0;
 }
 
@@ -1152,20 +1220,16 @@ int hidden sepol_compute_av(sepol_security_id_t ssid,
 int hidden sepol_string_to_security_class(const char *class_name,
 			sepol_security_class_t *tclass)
 {
-	char *class = NULL;
-	sepol_security_class_t id;
+	class_datum_t *tclass_datum;
 
-	for (id = 1;; id++) {
-		class = policydb->p_class_val_to_name[id - 1];
-		if (class == NULL) {
-			ERR(NULL, "could not convert %s to class id", class_name);
-			return STATUS_ERR;
-		}
-		if ((strcmp(class, class_name)) == 0) {
-			*tclass = id;
-			return STATUS_SUCCESS;
-		}
+	tclass_datum = hashtab_search(policydb->p_classes.table,
+				      (hashtab_key_t) class_name);
+	if (!tclass_datum) {
+		ERR(NULL, "unrecognized class %s", class_name);
+		return STATUS_ERR;
 	}
+	*tclass = tclass_datum->s.value;
+	return STATUS_SUCCESS;
 }
 
 /*
@@ -1643,13 +1707,16 @@ int hidden next_entry(void *buf, struct policy_file *fp, size_t bytes)
 			return -1;
 		break;
 	case PF_USE_MEMORY:
-		if (bytes > fp->len)
+		if (bytes > fp->len) {
+			errno = EOVERFLOW;
 			return -1;
+		}
 		memcpy(buf, fp->data, bytes);
 		fp->data += bytes;
 		fp->len -= bytes;
 		break;
 	default:
+		errno = EINVAL;
 		return -1;
 	}
 	return 0;
@@ -1679,6 +1746,40 @@ size_t hidden put_entry(const void *ptr, size_t size, size_t n,
 	default:
 		return 0;
 	}
+	return 0;
+}
+
+/*
+ * Reads a string and null terminates it from the policy file.
+ * This is a port of str_read from the SE Linux kernel code.
+ *
+ * It returns:
+ *   0 - Success
+ *  -1 - Failure with errno set
+ */
+int hidden str_read(char **strp, struct policy_file *fp, size_t len)
+{
+	int rc;
+	char *str;
+
+	if (zero_or_saturated(len)) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	str = malloc(len + 1);
+	if (!str)
+		return -1;
+
+	/* it's expected the caller should free the str */
+	*strp = str;
+
+	/* next_entry sets errno */
+	rc = next_entry(str, fp, len);
+	if (rc)
+		return rc;
+
+	str[len] = '\0';
 	return 0;
 }
 
@@ -1809,6 +1910,79 @@ int hidden sepol_fs_sid(char *name,
       out:
 	return rc;
 }
+
+/*
+ * Return the SID of the ibpkey specified by
+ * `subnet prefix', and `pkey number'.
+ */
+int hidden sepol_ibpkey_sid(uint64_t subnet_prefix,
+			    uint16_t pkey, sepol_security_id_t *out_sid)
+{
+	ocontext_t *c;
+	int rc = 0;
+
+	c = policydb->ocontexts[OCON_IBPKEY];
+	while (c) {
+		if (c->u.ibpkey.low_pkey <= pkey &&
+		    c->u.ibpkey.high_pkey >= pkey &&
+		    subnet_prefix == c->u.ibpkey.subnet_prefix)
+			break;
+		c = c->next;
+	}
+
+	if (c) {
+		if (!c->sid[0]) {
+			rc = sepol_sidtab_context_to_sid(sidtab,
+							 &c->context[0],
+							 &c->sid[0]);
+			if (rc)
+				goto out;
+		}
+		*out_sid = c->sid[0];
+	} else {
+		*out_sid = SECINITSID_UNLABELED;
+	}
+
+out:
+	return rc;
+}
+
+/*
+ * Return the SID of the subnet management interface specified by
+ * `device name', and `port'.
+ */
+int hidden sepol_ibendport_sid(char *dev_name,
+			       uint8_t port,
+			       sepol_security_id_t *out_sid)
+{
+	ocontext_t *c;
+	int rc = 0;
+
+	c = policydb->ocontexts[OCON_IBENDPORT];
+	while (c) {
+		if (c->u.ibendport.port == port &&
+		    !strcmp(dev_name, c->u.ibendport.dev_name))
+			break;
+		c = c->next;
+	}
+
+	if (c) {
+		if (!c->sid[0]) {
+			rc = sepol_sidtab_context_to_sid(sidtab,
+							 &c->context[0],
+							 &c->sid[0]);
+			if (rc)
+				goto out;
+		}
+		*out_sid = c->sid[0];
+	} else {
+		*out_sid = SECINITSID_UNLABELED;
+	}
+
+out:
+	return rc;
+}
+
 
 /*
  * Return the SID of the port specified by

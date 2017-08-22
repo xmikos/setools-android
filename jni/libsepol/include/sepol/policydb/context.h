@@ -22,7 +22,9 @@
 #include <sepol/policydb/ebitmap.h>
 #include <sepol/policydb/mls_types.h>
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*
  * A security context consists of an authenticated user
@@ -48,6 +50,46 @@ static inline int mls_context_cpy(context_struct_t * dst,
 		return -1;
 
 	return 0;
+}
+
+/*
+ * Sets both levels in the MLS range of 'dst' to the low level of 'src'.
+ */
+static inline int mls_context_cpy_low(context_struct_t *dst, context_struct_t *src)
+{
+	int rc;
+
+	dst->range.level[0].sens = src->range.level[0].sens;
+	rc = ebitmap_cpy(&dst->range.level[0].cat, &src->range.level[0].cat);
+	if (rc)
+		goto out;
+
+	dst->range.level[1].sens = src->range.level[0].sens;
+	rc = ebitmap_cpy(&dst->range.level[1].cat, &src->range.level[0].cat);
+	if (rc)
+		ebitmap_destroy(&dst->range.level[0].cat);
+out:
+	return rc;
+}
+
+/*
+ * Sets both levels in the MLS range of 'dst' to the high level of 'src'.
+ */
+static inline int mls_context_cpy_high(context_struct_t *dst, context_struct_t *src)
+{
+	int rc;
+
+	dst->range.level[0].sens = src->range.level[1].sens;
+	rc = ebitmap_cpy(&dst->range.level[0].cat, &src->range.level[1].cat);
+	if (rc)
+		goto out;
+
+	dst->range.level[1].sens = src->range.level[1].sens;
+	rc = ebitmap_cpy(&dst->range.level[1].cat, &src->range.level[1].cat);
+	if (rc)
+		ebitmap_destroy(&dst->range.level[0].cat);
+out:
+	return rc;
 }
 
 static inline int mls_context_cmp(context_struct_t * c1, context_struct_t * c2)
@@ -95,5 +137,8 @@ static inline int context_cmp(context_struct_t * c1, context_struct_t * c2)
 		(c1->type == c2->type) && mls_context_cmp(c1, c2));
 }
 
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
+
 #endif

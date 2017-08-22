@@ -42,6 +42,7 @@
 #include <stdlib.h>
 #include <regex.h>
 
+#include "strlcpy.h"
 #include "utils.h"
 
 static char *regatoi(const regex_t *, char *, int);
@@ -94,7 +95,7 @@ regerror(int errcode, const regex_t *preg, char *errbuf, size_t errbuf_size)
 		if (errcode&REG_ITOA) {
 			if (r->code != 0) {
 				assert(strlen(r->name) < sizeof(convbuf));
-				(void) strlcpy(convbuf, r->name, sizeof convbuf);
+				(void) regex_strlcpy(convbuf, r->name, sizeof convbuf);
 			} else
 				(void)snprintf(convbuf, sizeof convbuf,
 				    "REG_0x%x", target);
@@ -105,7 +106,7 @@ regerror(int errcode, const regex_t *preg, char *errbuf, size_t errbuf_size)
 
 	len = strlen(s) + 1;
 	if (errbuf_size > 0) {
-		strlcpy(errbuf, s, errbuf_size);
+		regex_strlcpy(errbuf, s, errbuf_size);
 	}
 
 	return(len);

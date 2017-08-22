@@ -24,7 +24,7 @@ struct sepol_user {
 
 struct sepol_user_key {
 	/* This user's name */
-	const char *name;
+	char *name;
 };
 
 int sepol_user_key_create(sepol_handle_t * handle,
@@ -40,7 +40,12 @@ int sepol_user_key_create(sepol_handle_t * handle,
 		return STATUS_ERR;
 	}
 
-	tmp_key->name = name;
+	tmp_key->name = strdup(name);
+	if (!tmp_key->name) {
+		ERR(handle, "out of memory, could not create selinux user key");
+		free(tmp_key);
+		return STATUS_ERR;
+	}
 
 	*key_ptr = tmp_key;
 	return STATUS_SUCCESS;
@@ -71,6 +76,9 @@ int sepol_user_key_extract(sepol_handle_t * handle,
 
 void sepol_user_key_free(sepol_user_key_t * key)
 {
+	if (!key)
+		return;
+	free(key->name);
 	free(key);
 }
 
@@ -172,16 +180,18 @@ int sepol_user_add_role(sepol_handle_t * handle,
 {
 
 	char *role_cp;
-	char **roles_realloc;
+	char **roles_realloc = NULL;
 
 	if (sepol_user_has_role(user, role))
 		return STATUS_SUCCESS;
 
 	role_cp = strdup(role);
+	if (!role_cp)
+		goto omem;
+
 	roles_realloc = realloc(user->roles,
 				sizeof(char *) * (user->num_roles + 1));
-
-	if (!role_cp || !roles_realloc)
+	if (!roles_realloc)
 		goto omem;
 
 	user->num_roles++;

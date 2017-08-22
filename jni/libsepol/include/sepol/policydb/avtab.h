@@ -40,11 +40,12 @@
 #ifndef _SEPOL_POLICYDB_AVTAB_H_
 #define _SEPOL_POLICYDB_AVTAB_H_
 
-#include <sys/cdefs.h>
 #include <sys/types.h>
 #include <stdint.h>
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct avtab_key {
 	uint16_t source_type;
@@ -59,28 +60,29 @@ typedef struct avtab_key {
 #define AVTAB_MEMBER		0x0020
 #define AVTAB_CHANGE		0x0040
 #define AVTAB_TYPE		(AVTAB_TRANSITION | AVTAB_MEMBER | AVTAB_CHANGE)
-#define AVTAB_OPNUM_ALLOWED	0x0100
-#define AVTAB_OPNUM_AUDITALLOW	0x0200
-#define AVTAB_OPNUM_DONTAUDIT	0x0400
-#define AVTAB_OPNUM		(AVTAB_OPNUM_ALLOWED | AVTAB_OPNUM_AUDITALLOW | AVTAB_OPNUM_DONTAUDIT)
-#define AVTAB_OPTYPE_ALLOWED	0x1000
-#define AVTAB_OPTYPE_AUDITALLOW	0x2000
-#define AVTAB_OPTYPE_DONTAUDIT	0x4000
-#define AVTAB_OPTYPE		(AVTAB_OPTYPE_ALLOWED | AVTAB_OPTYPE_AUDITALLOW | AVTAB_OPTYPE_DONTAUDIT)
-#define AVTAB_OP		(AVTAB_OPNUM | AVTAB_OPTYPE)
+#define AVTAB_XPERMS_ALLOWED	0x0100
+#define AVTAB_XPERMS_AUDITALLOW	0x0200
+#define AVTAB_XPERMS_DONTAUDIT	0x0400
+#define AVTAB_XPERMS_NEVERALLOW	0x0800
+#define AVTAB_XPERMS		(AVTAB_XPERMS_ALLOWED | AVTAB_XPERMS_AUDITALLOW | AVTAB_XPERMS_DONTAUDIT)
 #define AVTAB_ENABLED_OLD	0x80000000
 #define AVTAB_ENABLED		0x8000	/* reserved for used in cond_avtab */
 	uint16_t specified;	/* what fields are specified */
 } avtab_key_t;
 
-typedef struct avtab_operations {
-	uint8_t type;
+typedef struct avtab_extended_perms {
+
+#define AVTAB_XPERMS_IOCTLFUNCTION	0x01
+#define AVTAB_XPERMS_IOCTLDRIVER	0x02
+	/* extension of the avtab_key specified */
+	uint8_t specified;
+	uint8_t driver;
 	uint32_t perms[8];
-} avtab_operations_t;
+} avtab_extended_perms_t;
 
 typedef struct avtab_datum {
 	uint32_t data;		/* access vector or type */
-	avtab_operations_t *ops;
+	avtab_extended_perms_t *xperms;
 } avtab_datum_t;
 
 typedef struct avtab_node *avtab_ptr_t;
@@ -141,7 +143,10 @@ extern avtab_ptr_t avtab_search_node_next(avtab_ptr_t node, int specified);
 /* avtab_alloc uses one bucket per 2-4 elements, so adjust to get maximum buckets */
 #define MAX_AVTAB_SIZE (MAX_AVTAB_HASH_BUCKETS << 1)
 
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
+
 #endif				/* _AVTAB_H_ */
 
 /* FLASK */

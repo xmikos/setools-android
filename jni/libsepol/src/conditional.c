@@ -551,6 +551,9 @@ int cond_index_bool(hashtab_key_t key, hashtab_datum_t datum, void *datap)
 	if (!booldatum->s.value || booldatum->s.value > p->p_bools.nprim)
 		return -EINVAL;
 
+	if (p->p_bool_val_to_name[booldatum->s.value - 1] != NULL)
+		return -EINVAL;
+
 	p->p_bool_val_to_name[booldatum->s.value - 1] = key;
 	p->bool_val_to_struct[booldatum->s.value - 1] = booldatum;
 
@@ -589,14 +592,8 @@ int cond_read_bool(policydb_t * p,
 		goto err;
 
 	len = le32_to_cpu(buf[2]);
-
-	key = malloc(len + 1);
-	if (!key)
+	if (str_read(&key, fp, len))
 		goto err;
-	rc = next_entry(key, fp, len);
-	if (rc < 0)
-		goto err;
-	key[len] = 0;
 
 	if (p->policy_type != POLICY_KERN &&
 	    p->policyvers >= MOD_POLICYDB_VERSION_TUNABLE_SEP) {

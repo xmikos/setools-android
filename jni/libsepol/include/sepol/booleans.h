@@ -5,9 +5,10 @@
 #include <sepol/policydb.h>
 #include <sepol/boolean_record.h>
 #include <sepol/handle.h>
-#include <sys/cdefs.h>
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /*--------------compatibility--------------*/
 
@@ -16,7 +17,7 @@ __BEGIN_DECLS
    policy for the boolean settings in the boolean configuration file.
    The binary policy is rewritten in place in memory.
    Returns 0 upon success, or -1 otherwise. */
-extern int sepol_genbools(void *data, size_t len, char *boolpath);
+extern int sepol_genbools(void *data, size_t len, const char *boolpath);
 
 /* Given an existing binary policy (starting at 'data', with length 'len')
    and boolean settings specified by the parallel arrays ('names', 'values')
@@ -59,5 +60,8 @@ extern int sepol_bool_iterate(sepol_handle_t * handle,
 			      int (*fn) (const sepol_bool_t * boolean,
 					 void *fn_arg), void *arg);
 
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
+
 #endif

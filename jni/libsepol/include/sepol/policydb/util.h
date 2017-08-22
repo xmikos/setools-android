@@ -23,14 +23,25 @@
 #ifndef __SEPOL_UTIL_H__
 #define __SEPOL_UTIL_H__
 
-#include <sys/cdefs.h>
-
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 extern int add_i_to_a(uint32_t i, uint32_t * cnt, uint32_t ** a);
 
 extern char *sepol_av_to_string(policydb_t * policydbp, uint32_t tclass,
 				sepol_access_vector_t av);
 
-__END_DECLS
+char *sepol_extended_perms_to_string(avtab_extended_perms_t *xperms);
+
+/*
+ * The tokenize function may be used to
+ * replace sscanf
+ */
+extern int tokenize(char *line_buf, char delim, int num_args, ...);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif

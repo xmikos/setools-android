@@ -19,11 +19,16 @@ static int user_to_record(sepol_handle_t * handle,
 
 	const char *name = policydb->p_user_val_to_name[user_idx];
 	user_datum_t *usrdatum = policydb->user_val_to_struct[user_idx];
-	ebitmap_t *roles = &(usrdatum->roles.roles);
+	ebitmap_t *roles;
 	ebitmap_node_t *rnode;
 	unsigned bit;
 
 	sepol_user_t *tmp_record = NULL;
+
+	if (!usrdatum)
+		goto err;
+
+	roles = &(usrdatum->roles.roles);
 
 	if (sepol_user_create(handle, &tmp_record) < 0)
 		goto err;
@@ -134,8 +139,7 @@ int sepol_user_modify(sepol_handle_t * handle,
 		goto err;
 
 	/* Now, see if a user exists */
-	usrdatum = hashtab_search(policydb->p_users.table,
-				  (const hashtab_key_t)cname);
+	usrdatum = hashtab_search(policydb->p_users.table, cname);
 
 	/* If it does, we will modify it */
 	if (usrdatum) {
@@ -158,8 +162,7 @@ int sepol_user_modify(sepol_handle_t * handle,
 	for (i = 0; i < num_roles; i++) {
 
 		/* Search for the role */
-		roldatum = hashtab_search(policydb->p_roles.table,
-					  (const hashtab_key_t)roles[i]);
+		roldatum = hashtab_search(policydb->p_roles.table, roles[i]);
 		if (!roldatum) {
 			ERR(handle, "undefined role %s for user %s",
 			    roles[i], cname);
@@ -234,6 +237,7 @@ int sepol_user_modify(sepol_handle_t * handle,
 		if (!tmp_ptr)
 			goto omem;
 		policydb->user_val_to_struct = tmp_ptr;
+		policydb->user_val_to_struct[policydb->p_users.nprim] = NULL;
 
 		tmp_ptr = realloc(policydb->sym_val_to_name[SYM_USERS],
 				  (policydb->p_users.nprim +
@@ -241,6 +245,7 @@ int sepol_user_modify(sepol_handle_t * handle,
 		if (!tmp_ptr)
 			goto omem;
 		policydb->sym_val_to_name[SYM_USERS] = tmp_ptr;
+		policydb->p_user_val_to_name[policydb->p_users.nprim] = NULL;
 
 		/* Need to copy the user name */
 		name = strdup(cname);
@@ -294,10 +299,8 @@ int sepol_user_exists(sepol_handle_t * handle __attribute__ ((unused)),
 	const char *cname;
 	sepol_user_key_unpack(key, &cname);
 
-	*response = (hashtab_search(policydb->p_users.table,
-				    (const hashtab_key_t)cname) != NULL);
+	*response = (hashtab_search(policydb->p_users.table, cname) != NULL);
 
-	handle = NULL;
 	return STATUS_SUCCESS;
 }
 
@@ -308,7 +311,6 @@ int sepol_user_count(sepol_handle_t * handle __attribute__ ((unused)),
 	const policydb_t *policydb = &p->p;
 	*response = policydb->p_users.nprim;
 
-	handle = NULL;
 	return STATUS_SUCCESS;
 }
 
@@ -323,8 +325,7 @@ int sepol_user_query(sepol_handle_t * handle,
 	const char *cname;
 	sepol_user_key_unpack(key, &cname);
 
-	usrdatum = hashtab_search(policydb->p_users.table,
-				  (const hashtab_key_t)cname);
+	usrdatum = hashtab_search(policydb->p_users.table, cname);
 
 	if (!usrdatum) {
 		*response = NULL;

@@ -24,6 +24,7 @@
  * Copyright (C) 2004-2005 Trusted Computer Solutions, Inc.
  * Copyright (C) 2003 - 2004 Tresys Technology, LLC
  * Copyright (C) 2003 - 2004 Red Hat, Inc.
+ * Copyright (C) 2017 Mellanox Techonolgies Inc.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -61,7 +62,6 @@
 #include <sepol/policydb/context.h>
 #include <sepol/policydb/constraint.h>
 #include <sepol/policydb/sidtab.h>
-#include <sys/cdefs.h>
 
 #define ERRMSG_LEN 1024
 
@@ -69,7 +69,11 @@
 #define POLICYDB_ERROR       -1
 #define POLICYDB_UNSUPPORTED -2
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define IB_DEVICE_NAME_MAX 64
 
 /*
  * A datum type is defined for each kind of symbol 
@@ -162,9 +166,11 @@ typedef struct filename_trans {
 	uint32_t ttype;
 	uint32_t tclass;
 	char *name;
-	uint32_t otype;
-	struct filename_trans *next;
 } filename_trans_t;
+
+typedef struct filename_trans_datum {
+	uint32_t otype;		/* expected of new object */
+} filename_trans_datum_t;
 
 /* Type attributes */
 typedef struct type_datum {
@@ -175,7 +181,11 @@ typedef struct type_datum {
 #define TYPE_ALIAS 2		/* alias in modular policy */
 	uint32_t flavor;
 	ebitmap_t types;	/* types with this attribute */
-#define TYPE_FLAGS_PERMISSIVE	0x01
+#define TYPE_FLAGS_PERMISSIVE		(1 << 0)
+#define TYPE_FLAGS_EXPAND_ATTR_TRUE	(1 << 1)
+#define TYPE_FLAGS_EXPAND_ATTR_FALSE	(1 << 2)
+#define TYPE_FLAGS_EXPAND_ATTR (TYPE_FLAGS_EXPAND_ATTR_TRUE | \
+				TYPE_FLAGS_EXPAND_ATTR_FALSE)
 	uint32_t flags;
 	uint32_t bounds;	/* bounds type, if exist */
 } type_datum_t;
@@ -218,8 +228,6 @@ typedef struct range_trans {
 	uint32_t source_type;
 	uint32_t target_type;
 	uint32_t target_class;
-	mls_range_t target_range;
-	struct range_trans *next;
 } range_trans_t;
 
 /* Boolean data type */
@@ -241,43 +249,46 @@ typedef struct class_perm_node {
 	struct class_perm_node *next;
 } class_perm_node_t;
 
-typedef struct av_operations {
-	uint8_t type;
-	/* 256 bits of ioctl number permissions */
-	uint32_t perms[8];
-} av_operations_t;
+#define xperm_test(x, p) (1 & (p[x >> 5] >> (x & 0x1f)))
+#define xperm_set(x, p) (p[x >> 5] |= (1 << (x & 0x1f)))
+#define xperm_clear(x, p) (p[x >> 5] &= ~(1 << (x & 0x1f)))
+#define EXTENDED_PERMS_LEN 8
+
+typedef struct av_extended_perms {
+#define AVRULE_XPERMS_IOCTLFUNCTION	0x01
+#define AVRULE_XPERMS_IOCTLDRIVER	0x02
+	uint8_t specified;
+	uint8_t driver;
+	/* 256 bits of permissions */
+	uint32_t perms[EXTENDED_PERMS_LEN];
+} av_extended_perms_t;
 
 typedef struct avrule {
 /* these typedefs are almost exactly the same as those in avtab.h - they are
  * here because of the need to include neverallow and dontaudit messages */
-#define AVRULE_ALLOWED			0x0001
-#define AVRULE_AUDITALLOW		0x0002
-#define AVRULE_AUDITDENY		0x0004
+#define AVRULE_ALLOWED			AVTAB_ALLOWED
+#define AVRULE_AUDITALLOW		AVTAB_AUDITALLOW
+#define AVRULE_AUDITDENY		AVTAB_AUDITDENY
 #define AVRULE_DONTAUDIT		0x0008
-#define AVRULE_NEVERALLOW		0x0080
+#define AVRULE_NEVERALLOW		AVTAB_NEVERALLOW
 #define AVRULE_AV         (AVRULE_ALLOWED | AVRULE_AUDITALLOW | AVRULE_AUDITDENY | AVRULE_DONTAUDIT | AVRULE_NEVERALLOW)
-#define AVRULE_TRANSITION		0x0010
-#define AVRULE_MEMBER			0x0020
-#define AVRULE_CHANGE			0x0040
+#define AVRULE_TRANSITION		AVTAB_TRANSITION
+#define AVRULE_MEMBER			AVTAB_MEMBER
+#define AVRULE_CHANGE			AVTAB_CHANGE
 #define AVRULE_TYPE       (AVRULE_TRANSITION | AVRULE_MEMBER | AVRULE_CHANGE)
-#define AVRULE_OPNUM_ALLOWED 		0x0100
-#define AVRULE_OPNUM_AUDITALLOW		0x0200
-#define AVRULE_OPNUM_DONTAUDIT		0x0400
-#define AVRULE_OPNUM         (AVRULE_OPNUM_ALLOWED | AVRULE_OPNUM_AUDITALLOW | \
-				AVRULE_OPNUM_DONTAUDIT)
-#define AVRULE_OPTYPE_ALLOWED		0x1000
-#define AVRULE_OPTYPE_AUDITALLOW	0x2000
-#define AVRULE_OPTYPE_DONTAUDIT		0x4000
-#define AVRULE_OPTYPE         (AVRULE_OPTYPE_ALLOWED | AVRULE_OPTYPE_AUDITALLOW | \
-				AVRULE_OPTYPE_DONTAUDIT)
-#define AVRULE_OP         (AVRULE_OPNUM | AVRULE_OPTYPE)
+#define AVRULE_XPERMS_ALLOWED 		AVTAB_XPERMS_ALLOWED
+#define AVRULE_XPERMS_AUDITALLOW	AVTAB_XPERMS_AUDITALLOW
+#define AVRULE_XPERMS_DONTAUDIT		AVTAB_XPERMS_DONTAUDIT
+#define AVRULE_XPERMS_NEVERALLOW	AVTAB_XPERMS_NEVERALLOW
+#define AVRULE_XPERMS	(AVRULE_XPERMS_ALLOWED | AVRULE_XPERMS_AUDITALLOW | \
+				AVRULE_XPERMS_DONTAUDIT | AVRULE_XPERMS_NEVERALLOW)
 	uint32_t specified;
 #define RULE_SELF 1
 	uint32_t flags;
 	type_set_t stypes;
 	type_set_t ttypes;
 	class_perm_node_t *perms;
-	av_operations_t * ops;
+	av_extended_perms_t *xperms;
 	unsigned long line;	/* line number from policy.conf where
 				 * this rule originated  */
 	/* source file name and line number (e.g. .te file) */
@@ -343,13 +354,22 @@ typedef struct ocontext {
 		uint32_t device;
 		uint16_t pirq;
 		struct {
-			uint32_t low_iomem;
-			uint32_t high_iomem;
+			uint64_t low_iomem;
+			uint64_t high_iomem;
 		} iomem;
 		struct {
 			uint32_t low_ioport;
 			uint32_t high_ioport;
 		} ioport;
+		struct {
+			uint64_t subnet_prefix;
+			uint16_t low_pkey;
+			uint16_t high_pkey;
+		} ibpkey;
+		struct {
+			char *dev_name;
+			uint8_t port;
+		} ibendport;
 	} u;
 	union {
 		uint32_t sclass;	/* security class for genfs */
@@ -378,14 +398,15 @@ typedef struct genfs {
 #define SYM_NUM     8
 
 /* object context array indices */
-#define OCON_ISID  0		/* initial SIDs */
-#define OCON_FS    1		/* unlabeled file systems */
-#define OCON_PORT  2		/* TCP and UDP port numbers */
-#define OCON_NETIF 3		/* network interfaces */
-#define OCON_NODE  4		/* nodes */
-#define OCON_FSUSE 5		/* fs_use */
-#define OCON_NODE6 6		/* IPv6 nodes */
-#define OCON_GENFS 7            /* needed for ocontext_supported */
+#define OCON_ISID  0	/* initial SIDs */
+#define OCON_FS    1	/* unlabeled file systems */
+#define OCON_PORT  2	/* TCP and UDP port numbers */
+#define OCON_NETIF 3	/* network interfaces */
+#define OCON_NODE  4	/* nodes */
+#define OCON_FSUSE 5	/* fs_use */
+#define OCON_NODE6 6	/* IPv6 nodes */
+#define OCON_IBPKEY 7	/* Infiniband PKEY */
+#define OCON_IBENDPORT 8	/* Infiniband End Port */
 
 /* object context array indices for Xen */
 #define OCON_XEN_ISID  	    0    /* initial SIDs */
@@ -393,9 +414,10 @@ typedef struct genfs {
 #define OCON_XEN_IOPORT     2    /* io ports */
 #define OCON_XEN_IOMEM	    3    /* io memory */
 #define OCON_XEN_PCIDEVICE  4    /* pci devices */
+#define OCON_XEN_DEVICETREE 5    /* device tree node */
 
 /* OCON_NUM needs to be the largest index in any platform's ocontext array */
-#define OCON_NUM   7
+#define OCON_NUM   9
 
 /* section: module information */
 
@@ -551,9 +573,6 @@ typedef struct policydb {
 	/* role transitions */
 	role_trans_t *role_tr;
 
-	/* type transition rules with a 'name' component */
-	filename_trans_t *filename_trans;
-
 	/* role allows */
 	role_allow_t *role_allow;
 
@@ -566,8 +585,11 @@ typedef struct policydb {
 	   fixed labeling behavior. */
 	genfs_t *genfs;
 
-	/* range transitions */
-	range_trans_t *range_tr;
+	/* range transitions table (range_trans_key -> mls_range) */
+	hashtab_t range_tr;
+
+	/* file transitions with the last path component */
+	hashtab_t filename_trans;
 
 	ebitmap_t *type_attr_map;
 
@@ -603,6 +625,14 @@ extern int policydb_index_bools(policydb_t * p);
 
 extern int policydb_index_others(sepol_handle_t * handle, policydb_t * p,
 				 unsigned int verbose);
+
+extern int policydb_role_cache(hashtab_key_t key,
+			       hashtab_datum_t datum,
+			       void *arg);
+
+extern int policydb_user_cache(hashtab_key_t key,
+			       hashtab_datum_t datum,
+			       void *arg);
 
 extern int policydb_reindex_users(policydb_t * p);
 
@@ -651,7 +681,7 @@ extern void level_datum_init(level_datum_t * x);
 extern void level_datum_destroy(level_datum_t * x);
 extern void cat_datum_init(cat_datum_t * x);
 extern void cat_datum_destroy(cat_datum_t * x);
-
+extern int check_assertion(policydb_t *p, avrule_t *avrule);
 extern int check_assertions(sepol_handle_t * handle,
 			    policydb_t * p, avrule_t * avrules);
 
@@ -707,11 +737,13 @@ extern int policydb_set_target_platform(policydb_t *p, int platform);
 #define POLICYDB_VERSION_NEW_OBJECT_DEFAULTS	27
 #define POLICYDB_VERSION_DEFAULT_TYPE	28
 #define POLICYDB_VERSION_CONSTRAINT_NAMES	29
-#define POLICYDB_VERSION_IOCTL_OPERATIONS	30
+#define POLICYDB_VERSION_XEN_DEVICETREE		30 /* Xen-specific */
+#define POLICYDB_VERSION_XPERMS_IOCTL	30 /* Linux-specific */
+#define POLICYDB_VERSION_INFINIBAND		31 /* Linux-specific */
 
 /* Range of policy versions we understand*/
 #define POLICYDB_VERSION_MIN	POLICYDB_VERSION_BASE
-#define POLICYDB_VERSION_MAX	POLICYDB_VERSION_IOCTL_OPERATIONS
+#define POLICYDB_VERSION_MAX	POLICYDB_VERSION_INFINIBAND
 
 /* Module versions and specific changes*/
 #define MOD_POLICYDB_VERSION_BASE		4
@@ -730,9 +762,11 @@ extern int policydb_set_target_platform(policydb_t *p, int platform);
 #define MOD_POLICYDB_VERSION_NEW_OBJECT_DEFAULTS	15
 #define MOD_POLICYDB_VERSION_DEFAULT_TYPE	16
 #define MOD_POLICYDB_VERSION_CONSTRAINT_NAMES  17
+#define MOD_POLICYDB_VERSION_XPERMS_IOCTL  18
+#define MOD_POLICYDB_VERSION_INFINIBAND		19
 
 #define MOD_POLICYDB_VERSION_MIN MOD_POLICYDB_VERSION_BASE
-#define MOD_POLICYDB_VERSION_MAX MOD_POLICYDB_VERSION_CONSTRAINT_NAMES
+#define MOD_POLICYDB_VERSION_MAX MOD_POLICYDB_VERSION_INFINIBAND
 
 #define POLICYDB_CONFIG_MLS    1
 
@@ -763,7 +797,10 @@ extern int policydb_set_target_platform(policydb_t *p, int platform);
 #define POLICYDB_MOD_MAGIC SELINUX_MOD_MAGIC
 #define POLICYDB_MOD_STRING "SE Linux Module"
 
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
+
 #endif				/* _POLICYDB_H_ */
 
 /* FLASK */

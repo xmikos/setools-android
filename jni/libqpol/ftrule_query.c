@@ -30,10 +30,17 @@
 #include "qpol_internal.h"
 #include <sepol/policydb/policydb.h>
 
+typedef struct filename_trans_item
+{
+	filename_trans_t *ft;
+	filename_trans_datum_t *ftdatum;
+	struct filename_trans_item *next;
+} filename_trans_item_t;
+
 typedef struct filename_trans_state
 {
-	filename_trans_t *head;
-	filename_trans_t *cur;
+	filename_trans_item_t *head;
+	filename_trans_item_t *cur;
 } filename_trans_state_t;
 
 static int filename_trans_state_end(const qpol_iterator_t * iter)
@@ -85,7 +92,7 @@ static size_t filename_trans_state_size(const qpol_iterator_t * iter)
 {
 	filename_trans_state_t *fts = NULL;
 	const policydb_t *db = NULL;
-	filename_trans_t *tmp = NULL;
+	filename_trans_item_t *tmp = NULL;
 	size_t count = 0;
 
 	if (!iter || !(fts = qpol_iterator_state(iter)) || !(db = qpol_iterator_policy(iter))) {
@@ -97,6 +104,26 @@ static size_t filename_trans_state_size(const qpol_iterator_t * iter)
 		count++;
 
 	return count;
+}
+
+static int _hashmap_to_list(hashtab_key_t key, hashtab_datum_t datum, void *ptr)
+{
+	filename_trans_t *ft = (filename_trans_t *)key;
+	filename_trans_datum_t *ftdatum = (filename_trans_datum_t *)datum;
+	filename_trans_state_t *fts = ptr;
+	filename_trans_item_t *fti;
+
+	fti = calloc(1, sizeof(*fti));
+	if (fti == NULL) {
+		errno = ENOMEM;
+		return STATUS_ERR;
+	}
+	fti->ft = ft;
+	fti->ftdatum = ftdatum;
+	fti->next = fts->head;
+	fts->head = fti;
+
+	return STATUS_SUCCESS;
 }
 
 int qpol_policy_get_filename_trans_iter(const qpol_policy_t * policy, qpol_iterator_t ** iter)
@@ -122,7 +149,9 @@ int qpol_policy_get_filename_trans_iter(const qpol_policy_t * policy, qpol_itera
 		ERR(policy, "%s", strerror(errno));
 		return STATUS_ERR;
 	}
-	fts->head = fts->cur = db->filename_trans;
+
+	hashtab_map(db->filename_trans, _hashmap_to_list, fts);
+	fts->cur = fts->head;
 
 	if (qpol_iterator_create
 	    (policy, (void *)fts, filename_trans_state_get_cur, filename_trans_state_next, filename_trans_state_end, filename_trans_state_size,
@@ -152,7 +181,7 @@ int qpol_filename_trans_get_source_type(const qpol_policy_t * policy, const qpol
 	}
 
 	db = &policy->p->p;
-	ft = (filename_trans_t *) rule;
+	ft = ((filename_trans_item_t *)rule)->ft;
 
 	*source = (qpol_type_t *) db->type_val_to_struct[ft->stype - 1];
 
@@ -175,7 +204,7 @@ int qpol_filename_trans_get_target_type(const qpol_policy_t * policy, const qpol
 	}
 
 	db = &policy->p->p;
-	ft = (filename_trans_t *) rule;
+	ft = ((filename_trans_item_t *)rule)->ft;
 
 	*target = (qpol_type_t *) db->type_val_to_struct[ft->ttype - 1];
 
@@ -199,7 +228,7 @@ int qpol_filename_trans_get_object_class(const qpol_policy_t * policy, const qpo
 	}
 
 	db = &policy->p->p;
-	ft = (filename_trans_t *) rule;
+	ft = ((filename_trans_item_t *)rule)->ft;
 
 	*obj_class = (qpol_class_t *) db->class_val_to_struct[ft->tclass - 1];
 
@@ -209,7 +238,7 @@ int qpol_filename_trans_get_object_class(const qpol_policy_t * policy, const qpo
 int qpol_filename_trans_get_default_type(const qpol_policy_t * policy, const qpol_filename_trans_t * rule, const qpol_type_t ** dflt)
 {
 	policydb_t *db = NULL;
-	filename_trans_t *ft = NULL;
+	filename_trans_item_t *fti = NULL;
 
 	if (dflt) {
 		*dflt = NULL;
@@ -222,9 +251,9 @@ int qpol_filename_trans_get_default_type(const qpol_policy_t * policy, const qpo
 	}
 
 	db = &policy->p->p;
-	ft = (filename_trans_t *) rule;
+	fti = (filename_trans_item_t *) rule;
 
-	*dflt = (qpol_type_t *) db->type_val_to_struct[ft->otype - 1];
+	*dflt = (qpol_type_t *) db->type_val_to_struct[fti->ftdatum->otype - 1];
 
 	return STATUS_SUCCESS;
 }
@@ -243,7 +272,7 @@ int qpol_filename_trans_get_filename(const qpol_policy_t * policy, const qpol_fi
 		return STATUS_ERR;
 	}
 
-	ft = (filename_trans_t *) rule;
+	ft = ((filename_trans_item_t *)rule)->ft;
 
 	*name = ft->name;
 

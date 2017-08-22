@@ -8,8 +8,9 @@
 static const char *polcap_names[] = {
 	"network_peer_controls",	/* POLICYDB_CAPABILITY_NETPEER */
 	"open_perms",			/* POLICYDB_CAPABILITY_OPENPERM */
-	"redhat1",			/* POLICYDB_CAPABILITY_REDHAT1, aka ptrace_child */
+	"extended_socket_class",	/* POLICYDB_CAPABILITY_EXTSOCKCLASS */
 	"always_check_network",		/* POLICYDB_CAPABILITY_ALWAYSNETWORK */
+	"cgroup_seclabel",		/* POLICYDB_CAPABILITY_SECLABEL */
 	NULL
 };
 
@@ -26,7 +27,7 @@ int sepol_polcap_getnum(const char *name)
 	return -1;
 }
 
-const char *sepol_polcap_getname(int capnum)
+const char *sepol_polcap_getname(unsigned int capnum)
 {
 	if (capnum > POLICYDB_CAPABILITY_MAX)
 		return NULL;

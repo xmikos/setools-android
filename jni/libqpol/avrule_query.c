@@ -56,9 +56,8 @@ int qpol_policy_get_avrule_iter(const qpol_policy_t * policy, uint32_t rule_type
 #endif
 
 	if ((rule_type_mask & QPOL_RULE_NEVERALLOW) && !qpol_policy_has_capability(policy, QPOL_CAP_NEVERALLOW)) {
-		ERR(policy, "%s", "Cannot get avrules: Neverallow rules requested but not available");
-		errno = ENOTSUP;
-		return STATUS_ERR;
+		ERR(policy, "%s", "Cannot get avrules: Neverallow rules requested but not available. Skipping neverallow rules...");
+		rule_type_mask &= ~(uint32_t)QPOL_RULE_NEVERALLOW;
 	}
 
 	db = &policy->p->p;
