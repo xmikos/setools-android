@@ -343,7 +343,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (!selected || ((selected == SEL_ADD_RULE) && (!source || !target || !class || !perm)))
+	if (!selected || ((selected == SEL_ADD_RULE) && (!source || !target || !class || !perms)))
 		usage(argv[0]);
 
 	if (!outfile && policy)
