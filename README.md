@@ -36,13 +36,14 @@ after dumping it from a device.
     autoreconf -i
     ./configure
     make
-    cp ./seinfo ./sesearch ./sepolicy-inject /usr/local/bin (optional)
+    sudo cp ./seinfo ./sesearch ./sepolicy-inject /usr/local/bin  # optional
 
 
 ## Usage
 
     sepolicy-inject -s <source type> -t <target type> -c <class> -p <perm>[,<perm2>,<perm3>,...] [-P <policy file>] [-o <output file>] [-l|--load]
-    sepolicy-inject -Z permissive_type [-P <policy file>] [-o <output file>] [-l|--load]
+    sepolicy-inject -Z type_to_make_permissive [-P <policy file>] [-o <output file>] [-l|--load]
+    sepolicy-inject -z type_to_make_nonpermissive [-P <policy file>] [-o <output file>] [-l|--load]
 
 For example if you want to allow _vdc_ to write to pseudo-terminal (so you can see replies from _vdc_ command):
 
